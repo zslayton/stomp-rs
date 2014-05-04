@@ -1,11 +1,70 @@
 // Non-camel case types are used for Stomp Protocol version enum variants
 #![allow(non_camel_case_types)]
 
-pub type HeaderList = ~[Header];
+use std::slice::Items;
+
+// Ideally this would be a simple typedef. However:
+// See Rust bug #11047: https://github.com/mozilla/rust/issues/11047
+// Cannot call static methods (`with_capacity`) on type aliases (`HeaderList`)
+pub struct HeaderList {
+  pub headers: Vec<Header>
+}
+
+impl HeaderList {
+  pub fn new(capacity: uint) -> HeaderList {
+    HeaderList {
+      headers: Vec::with_capacity(capacity)
+    }
+  }
+
+  pub fn push(&mut self, header: Header) {
+    self.headers.push(header);
+  }
+
+  pub fn iter<'a>(&'a self) -> Items<'a, Header> {
+    self.headers.iter()
+  }
+
+  pub fn get_content_length(& self) -> Option<ContentLength> {
+    let length = match self.get_header("content-length") {
+      Some(&Header(_, ref v)) => v,
+      None => return None
+    };
+    match from_str::<uint>(*length) {
+      Some(l) => Some(ContentLength(l)),
+      None => None
+    }
+  }
+
+
+}
+
+
 pub struct Header(~str, ~str);
+
+impl Header {
+  pub fn get_key<'a>(&'a self) -> &'a ~str {
+    match self {
+      &Header(ref k, _) => k
+    }
+  }
+  pub fn get_value<'a>(&'a self) -> &'a ~str {
+    match self {
+      &Header(_, ref v) => v
+    }
+  }
+  pub fn from_str(string : &str) -> Option<Header> {
+    let parts : ~[&str] = string.split(':').collect();
+    match parts.as_slice() {
+      [k, v] => Some(Header(k.to_owned(), v.to_owned())),
+      _ => None
+    }
+  }
+}
 
 // Headers in the Spec
 pub struct AcceptVersion(~[StompVersion]);
+pub struct ContentLength(pub uint);
 pub struct Custom(Header);
 pub struct Destination(~str);
 pub struct HeartBeat(uint, uint);
@@ -33,6 +92,7 @@ pub enum AckMode {
   ClientIndividual
 }
 
+
 trait StompHeaderSet {
   fn get_header<'a>(&'a self, key: &str) -> Option<&'a Header>;
   fn get_accept_version<'a>(&'a self) -> Option<~[StompVersion]>;
@@ -54,7 +114,7 @@ trait StompHeaderSet {
 impl StompHeaderSet for HeaderList {
   
   fn get_header<'a>(&'a self, key: &str) -> Option<&'a Header>{
-    self.iter().find(|header| 
+    self.headers.iter().find(|header| 
       match **header {
         Header(ref k, _) if (*k).as_slice() == key => true, 
         _ => false
@@ -75,7 +135,6 @@ impl StompHeaderSet for HeaderList {
     }).collect();
     Some(versions)
   }
-
   fn get_destination(&self) -> Option<Destination> {
     match self.get_header("destination") {
       Some(&Header(_, ref v)) => Some(Destination(v.to_owned())),
