@@ -1,16 +1,16 @@
 use frame::Frame;
 
 enum ClientFrame {
-  Connect(~Frame),
-  Send(~Frame),
-  Subscribe(~Frame),
-  Unsubscribe(~Frame),
-  Begin(~Frame),
-  Commit(~Frame),
-  Abort(~Frame),
-  Ack(~Frame),
-  Nack(~Frame),
-  Disconnect(~Frame),
+  Connect(Frame),
+  Send(Frame),
+  Subscribe(Frame),
+  Unsubscribe(Frame),
+  Begin(Frame),
+  Commit(Frame),
+  Abort(Frame),
+  Ack(Frame),
+  Nack(Frame),
+  Disconnect(Frame),
 }
 
 /*
@@ -34,5 +34,5 @@ of type safety.
 */
 
 impl ClientFrame {
-
+  
 }
