@@ -11,7 +11,10 @@ pub struct HeaderList {
 }
 
 impl HeaderList {
-  pub fn new(capacity: uint) -> HeaderList {
+  pub fn new() -> HeaderList {
+    HeaderList::with_capacity(0)
+  }
+  pub fn with_capacity(capacity: uint) -> HeaderList {
     HeaderList {
       headers: Vec::with_capacity(capacity)
     }

@@ -8,7 +8,7 @@ use frame::Frame;
 use headers::Header;
 use headers::HeaderList;
 
-struct Connection {
+pub struct Connection {
   ip_address : String,
   port: u16,
   writer  : TcpStream,
@@ -26,15 +26,16 @@ impl Connection {
     })
   }
 
-  fn send_connect_frame(&mut self) {
-    let mut header_list : HeaderList = HeaderList::new(1);
+  fn send_connect_frame(&mut self) -> IoResult<()> {
+    let mut header_list : HeaderList = HeaderList::with_capacity(2);
     header_list.push(Header::from_str("accept-version:1.2").unwrap());
-    let mut connect_frame = Frame {
+    header_list.push(Header::from_str("content-length:0").unwrap());
+    let connect_frame = Frame {
        command : "CONNECT".to_string(),
        headers : header_list,
        body : Vec::new() 
     };
-    connect_frame.write(&mut self.writer);
+    connect_frame.write(&mut self.writer)
   }
 
   fn read_connected_frame(&mut self) -> IoResult<Frame> {
@@ -49,8 +50,11 @@ impl Connection {
     }
   }
 
+  // This method should return a STOMP session rather than the
+  // CONNECT frame. The session should hold the Session ID
+  // and the connection
   pub fn connect(&mut self) -> IoResult<Frame> {
-    self.send_connect_frame();
+    let _ = self.send_connect_frame(); // Handle this frame
     self.read_connected_frame()
   }
 }

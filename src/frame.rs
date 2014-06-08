@@ -15,51 +15,86 @@ pub struct Frame {
 }
 
 impl Frame {
-  // TODO: Rewrite properly with String to reduce allocation / simplify
-  pub fn to_str(&self) -> String {
-    let mut header_str = "".to_string(); 
-    for header in self.headers.iter() {
-      header_str = format!("{}{}:{}\n", header_str, header.get_key(), header.get_value());
-    }
-    let body_str : &str = match from_utf8(self.body.as_slice()) {
-      Some(ref s) => *s,
-      None => "<Binary content>"
-    };
 
-    format!("command: {}\nheaders: {}\nbody: {}", self.command, header_str, body_str)
+  pub fn character_count(&self) -> uint {
+     let mut space_required = 0u;
+    // Add one to space calculations to make room for '\n'
+    space_required += self.command.len() + 1;
+    space_required += self.headers.iter()
+                      .fold(0, |length, header| 
+                          length + header.get_raw().len()+1
+                      );
+    space_required += self.body.len();
+    space_required
+  }
+
+  pub fn to_str(&self) -> String {
+    let space_required = self.character_count();
+    println!("Required Space: {}", space_required);
+    let mut frame_string = String::with_capacity(space_required);
+    frame_string = frame_string.append(self.command.as_slice());
+    frame_string = frame_string.append("\n");
+    for header in self.headers.iter() {
+      frame_string = frame_string.append(header.get_raw());
+      frame_string = frame_string.append("\n");
+    }
+    let body_string : &str = match from_utf8(self.body.as_slice()) {
+      Some(ref s) => *s,
+      None => "<Binary content>" // Space is wasted in this case. Could shrink to fit?
+    };
+    frame_string = frame_string.append(body_string);
+    println!("Final string length: {}", frame_string.len());
+    frame_string
   }
 
   pub fn write<T: Writer>(&self, stream: &mut T) -> IoResult<()> {
+    println!("Sending command...");
     try!(stream.write_str(self.command.as_slice()));
+    println!("Sending headers...");
     for header in self.headers.iter() {
-      try!(stream.write_str(header.get_key()));
-      try!(stream.write_str(":"));
-      try!(stream.write_str(header.get_value()));
+      try!(stream.write_str(header.get_raw()));
+      try!(stream.write_str("\n"));
     }
-    let result = try!(stream.write(self.body.as_slice()));
-    Ok(result)
+    try!(stream.write_str("\n"));
+    println!("Sending body...");
+    try!(stream.write(self.body.as_slice()));
+    try!(stream.write(&[0]));
+    println!("write() complete.");
+    Ok(())
+  }
+
+  fn chomp_line(mut line: String) -> String {
+    // This may be suboptimal, but fine for now
+    let chomped_length : uint;
+    {
+      let trimmed_line : &str = line.as_slice().trim_right_chars(&['\r', '\n']);
+      chomped_length = trimmed_line.len();
+    }
+    line.truncate(chomped_length);
+    line
   }
 
   pub fn read<R: Reader>(stream: &mut BufferedReader<R>) -> IoResult<Frame> {
     let mut line : String;
+    // Consume any number of empty preceding lines
     loop {
-      line = try!(stream.read_line()).as_slice().trim_right_chars(&['\r', '\n']).to_string();
+      line = Frame::chomp_line(try!(stream.read_line()));
       if line.len() > 0 {
         break;
       }
     }
     let command : String = line;
 
-    let mut header_list : HeaderList = HeaderList::new(3);
+    let mut header_list : HeaderList = HeaderList::with_capacity(3);
     loop {
-      line = try!(stream.read_line()).as_slice().trim_right_chars(&['\r', '\n']).to_string();
-      if line.len() == 0 {
+      line = Frame::chomp_line(try!(stream.read_line()));
+      if line.len() == 0 { // Empty line, no more headers
         break;
       }
       let header = Header::from_str(line.as_slice());
       match header {
         Some(h) => header_list.push(h),
-        None => return Err(IoError{kind: InvalidInput, desc: "Invalid header encountered.", detail: Some(line)})
+        None => return Err(IoError{kind: InvalidInput, desc: "Invalid header encountered.", detail: Some(line.to_string())})
       }
     }
 
