@@ -51,10 +51,7 @@ impl Connection {
     }
   }
 
-  // This method should return a STOMP session rather than the
-  // CONNECT frame. The session should hold the Session ID
-  // and the connection
-  pub fn connect(mut self) -> IoResult<Session> {
+  pub fn start_session(mut self) -> IoResult<Session> {
     let _ = self.send_connect_frame(); // Handle this frame
     let frame = match self.read_connected_frame() {
       Ok(f) => f,

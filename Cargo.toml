@@ -1,0 +1,9 @@
+[package]
+
+name = "stomp"
+version = "0.0.1"
+authors = [ "zslayton" ]
+
+[[lib]]
+
+name = "stomp"

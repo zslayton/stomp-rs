@@ -1,6 +1,4 @@
 use std::collections::hashmap::HashMap;
-use std::io::net::tcp::TcpStream;
-use std::io::BufferedReader;
 use std::io::IoResult;
 use std::io::IoError;
 use std::io::InvalidInput;
@@ -40,7 +38,7 @@ impl Session {
     let topic_header_str = format!("destination:{}", topic);
     header_list.push(Header::from_str(topic_header_str.as_slice()).unwrap());
     let subscription_id_str = format!("stomp-rs/{}", subscription_id);
-    let mut subscription_header_str = format!("id:{}", subscription_id_str);
+    let subscription_header_str = format!("id:{}", subscription_id_str);
     header_list.push(Header::from_str(subscription_header_str.as_slice()).unwrap());
     header_list.push(Header::from_str("ack:auto").unwrap());
     let subscribe_frame = Frame {
