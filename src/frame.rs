@@ -106,6 +106,7 @@ impl Frame {
     match content_length {
       Some(ContentLength(num_bytes)) => {
         body = try!(stream.read_exact(num_bytes));
+        let _ = try!(stream.read_exact(1)); // Toss aside trailing null octet
       },
       None => {
         body = try!(stream.read_until(0 as u8));

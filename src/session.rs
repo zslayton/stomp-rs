@@ -50,6 +50,21 @@ impl Session {
     try!(subscribe_frame.write(&mut self.connection.writer));
     Ok(subscription_id_str)
   }
+
+  pub fn send_text(&mut self, topic: &str, body: &str) -> IoResult<()> {
+    let mut header_list : HeaderList = HeaderList::with_capacity(3);
+    let topic_header_str = format!("destination:{}", topic);
+    let content_length_str = format!("content-length:{}", body.len());
+    header_list.push(Header::from_str(topic_header_str.as_slice()).unwrap());
+    header_list.push(Header::from_str(content_length_str.as_slice()).unwrap());
+    header_list.push(Header::from_str("content-type:text/plain").unwrap());
+    let send_frame = Frame {
+      command : "SEND".to_string(),
+      headers : header_list,
+      body : Vec::from_slice(body.as_bytes())
+    };
+    Ok(try!(send_frame.write(&mut self.connection.writer)))
+  }
  
   pub fn subscribe(&mut self, topic: &str, callback: fn(Frame)->()) -> IoResult<()> {
     let subscription_id = self.generate_subscription_id();
@@ -68,8 +83,28 @@ impl Session {
              desc: "Non-MESSAGE frame received.",
              detail: from_utf8(frame.body.as_slice()).map(|err: &str| err.to_string())
            })
-    }
+    } 
   }
+
+  pub fn dispatch(&mut self, frame: Frame) -> () {
+       let subscription_str = match frame.headers.get_subscription() {
+        Some(Subscription(ref s)) => s.to_string(),
+        None => { 
+          println!("Error: frame did not contain a subscription header.");
+          return;
+        }
+      };
+
+      let callback = match self.callbacks.find_equiv(&(subscription_str.as_slice())) {
+        Some(c) => c,
+        None => {
+          println!("Error: Received message for unknown subscription: {}", subscription_str);
+          return;
+        }
+      };
+      println!("Found callback. Executing.");
+      (*callback)(frame);
+  } 
 
   pub fn listen(&mut self) {
     loop {
@@ -80,24 +115,7 @@ impl Session {
           continue;
         }
       };
-      
-      let subscription_str = match frame.headers.get_subscription() {
-        Some(Subscription(ref s)) => s.to_string(),
-        None => { 
-          println!("Error: frame did not contain a subscription header.");
-          continue;
-        }
-      };
-
-      let callback = match self.callbacks.find_equiv(&(subscription_str.as_slice())) {
-        Some(c) => c,
-        None => {
-          println!("Error: Received message for unknown subscription: {}", subscription_str);
-          continue;
-        }
-      };
-      println!("Found callback. Executing.");
-      (*callback)(frame);
+      self.dispatch(frame);
     }
-  }
+  }      
 }
