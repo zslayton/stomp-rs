@@ -6,5 +6,6 @@
 //pub mod commands;
 pub mod headers;
 pub mod connection;
+pub mod session;
 pub mod frame;
 //pub mod client_frame;

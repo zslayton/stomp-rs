@@ -5,14 +5,15 @@ use std::io::IoError;
 use std::io::InvalidInput;
 use std::str::from_utf8;
 use frame::Frame;
+use session::Session;
 use headers::Header;
 use headers::HeaderList;
 
 pub struct Connection {
-  ip_address : String,
-  port: u16,
-  writer  : TcpStream,
-  reader  : BufferedReader<TcpStream>
+  pub ip_address : String,
+  pub port: u16,
+  pub writer  : TcpStream,
+  pub reader  : BufferedReader<TcpStream>
 }
 
 impl Connection {
@@ -53,8 +54,12 @@ impl Connection {
   // This method should return a STOMP session rather than the
   // CONNECT frame. The session should hold the Session ID
   // and the connection
-  pub fn connect(&mut self) -> IoResult<Frame> {
+  pub fn connect(mut self) -> IoResult<Session> {
     let _ = self.send_connect_frame(); // Handle this frame
-    self.read_connected_frame()
+    let frame = match self.read_connected_frame() {
+      Ok(f) => f,
+      Err(e) => return Err(e)
+    };
+    Ok(Session::new(self))
   }
 }

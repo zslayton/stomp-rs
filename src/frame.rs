@@ -24,6 +24,7 @@ impl Frame {
                       .fold(0, |length, header| 
                           length + header.get_raw().len()+1
                       );
+    space_required += 1; // Newline at end of headers
     space_required += self.body.len();
     space_required
   }
@@ -38,6 +39,7 @@ impl Frame {
       frame_string = frame_string.append(header.get_raw());
       frame_string = frame_string.append("\n");
     }
+    frame_string = frame_string.append("\n");
     let body_string : &str = match from_utf8(self.body.as_slice()) {
       Some(ref s) => *s,
       None => "<Binary content>" // Space is wasted in this case. Could shrink to fit?
@@ -50,6 +52,7 @@ impl Frame {
   pub fn write<T: Writer>(&self, stream: &mut T) -> IoResult<()> {
     println!("Sending command...");
     try!(stream.write_str(self.command.as_slice()));
+    try!(stream.write_str("\n"));
     println!("Sending headers...");
     for header in self.headers.iter() {
       try!(stream.write_str(header.get_raw()));

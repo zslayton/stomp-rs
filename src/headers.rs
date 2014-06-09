@@ -63,7 +63,7 @@ impl Header {
 }
 
 // Headers in the Spec
-pub struct AcceptVersion(~[StompVersion]);
+pub struct AcceptVersion(Vec<StompVersion>);
 pub struct ContentLength(pub uint);
 pub struct Custom(Header);
 pub struct Destination<'a> (&'a str);
@@ -76,7 +76,7 @@ pub struct Receipt<'a>(&'a str);
 pub struct ReceiptId<'a>(&'a str);
 pub struct Server<'a>(&'a str);
 pub struct Session<'a> (&'a str);
-pub struct Subscription<'a>(&'a str);
+pub struct Subscription<'a>(pub &'a str);
 pub struct Transaction<'a>(&'a str);
 pub struct Version(StompVersion);
 
