@@ -8,10 +8,20 @@ use std::io::InvalidInput;
 use std::io::BufferedReader;
 use std::str::from_utf8;
 
+use std::fmt::Show;
+use std::fmt::Formatter;
+use std::fmt::Result;
+
 pub struct Frame {
   pub command : String,
   pub headers : HeaderList, 
   pub body : Vec<u8>
+}
+
+impl Show for Frame {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "{}", self.to_str())
+    }
 }
 
 impl Frame {

@@ -46,7 +46,7 @@ impl Session {
        headers : header_list,
        body : Vec::new() 
     };
-    println!("Sending frame:\n{}", subscribe_frame.to_str());
+    println!("Sending frame:\n{}", subscribe_frame);
     try!(subscribe_frame.write(&mut self.connection.writer));
     Ok(subscription_id_str)
   }
