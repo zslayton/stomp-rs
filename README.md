@@ -43,3 +43,5 @@ name = "stomp_test"
 
 git = "https://github.com/zslayton/stomp-rs.git"
 ```
+
+keywords: `Stomp`, `Rust`, `rust-lang`, `rustlang`, `cargo`, `ActiveMQ`, `RabbitMQ`, `Message Queue`, `MQ`
