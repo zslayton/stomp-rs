@@ -6,6 +6,7 @@ use std::str::from_utf8;
 use frame::Frame;
 use connection::Connection;
 use headers::Subscription;
+use headers::Id;
 use headers::StompHeaderSet;
 
 pub struct Session {
@@ -32,17 +33,21 @@ impl Session {
   }
 
   pub fn send_text(&mut self, topic: &str, body: &str) -> IoResult<()> {
-    let send_frame = Frame::send(topic, body.as_bytes());
-    Ok(try!(send_frame.write(&mut self.connection.writer)))
+    Ok(try!(self.send_bytes(topic, "text/plain", body.as_bytes())))
   }
  
+  pub fn send_bytes(&mut self, topic: &str, mime_type: &str, body: &[u8]) -> IoResult<()> {
+    let send_frame = Frame::send(topic, mime_type, body);
+    Ok(try!(send_frame.write(&mut self.connection.writer)))
+  }
+
   pub fn subscribe(&mut self, topic: &str, callback: fn(Frame)->()) -> IoResult<()> {
     let subscription_id = self.generate_subscription_id();
     let subscribe_frame = Frame::subscribe(topic, subscription_id);    
     println!("Sending frame:\n{}", subscribe_frame);
     try!(subscribe_frame.write(&mut self.connection.writer));
-    let subscription_id_str = match subscribe_frame.headers.get_subscription() {
-      Some(Subscription(s)) => s.to_string(),
+    let subscription_id_str = match subscribe_frame.headers.get_id() {
+      Some(Id(s)) => s.to_string(),
       None => unreachable!()
     };
     println!("Registering callback for subscription id: {}", subscription_id_str);
@@ -67,6 +72,7 @@ impl Session {
         Some(Subscription(ref s)) => s.to_string(),
         None => { 
           println!("Error: frame did not contain a subscription header.");
+          println!("Frame: {}", frame);
           return;
         }
       };

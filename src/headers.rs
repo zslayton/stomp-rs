@@ -77,7 +77,7 @@ pub struct Custom(Header);
 pub struct Destination<'a> (&'a str);
 pub struct HeartBeat(uint, uint);
 pub struct Host<'a>(&'a str);
-pub struct Id<'a>(&'a str);
+pub struct Id<'a>(pub &'a str);
 pub struct Login<'a>(&'a str);
 pub struct Passcode<'a>(&'a str);
 pub struct Receipt<'a>(&'a str);
