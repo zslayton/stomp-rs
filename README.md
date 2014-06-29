@@ -18,7 +18,13 @@ fn on_message(frame: Frame){
   println!("Received a message:\n{}", frame.to_str());
 }
 
-session.subscribe("/topic/messages", on_message);
+let topic = "/topic/messages";
+session.subscribe(topic, on_message);
+
+session.send_text(topic, "Animal");
+session.send_text(topic, "Vegetable";)
+session.send_text(topic, "Mineral");
+
 session.listen(); // Loops infinitely, awaiting messages
 ```
 
