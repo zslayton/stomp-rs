@@ -1,7 +1,7 @@
 stomp-rs
 =====
 `stomp-rs` aspires to provide a full STOMP 1.2 client implementation for the Rust
-programming language. It is in an alpha state and should not be used.
+programming language. It is in an alpha state and should not be used in production code.
 
 
 ### Example stomp-rs code
