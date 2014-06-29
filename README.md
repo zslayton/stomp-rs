@@ -33,5 +33,7 @@ version = "0.0.1"
 
 name = "stomp_test"
 
+[dependencies.stomp]
+
 git = "https://github.com/zslayton/stomp-rs.git"
 ```
