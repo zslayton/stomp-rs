@@ -1,7 +1,8 @@
 stomp-rs
 =====
-`stomp-rs` aspires to provide a full STOMP 1.2 client implementation for the Rust
-programming language. It is in an alpha state and should not be used in production code.
+`stomp-rs` aspires to provide a full [STOMP](http://stomp.github.io/stomp-specification-1.2.html) 1.2 client implementation for the Rust programming language. This allows programs written in Rust to interact with message queueing services like [ActiveMQ](http://activemq.apache.org/) and [RabbitMQ](http://www.rabbitmq.com/).
+
+`stomp-rs` is in an alpha state and should not be used in production code.
 
 
 ### Example stomp-rs code
