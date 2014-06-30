@@ -60,16 +60,14 @@ impl Frame {
   }
 
   pub fn write<T: Writer>(&self, stream: &mut T) -> IoResult<()> {
-    println!("Sending command...");
+    println!("Sending frame:\n{}", self.to_str());
     try!(stream.write_str(self.command.as_slice()));
     try!(stream.write_str("\n"));
-    println!("Sending headers...");
     for header in self.headers.iter() {
       try!(stream.write_str(header.get_raw()));
       try!(stream.write_str("\n"));
     }
     try!(stream.write_str("\n"));
-    println!("Sending body...");
     try!(stream.write(self.body.as_slice()));
     try!(stream.write(&[0]));
     println!("write() complete.");
@@ -137,11 +135,10 @@ impl Frame {
     connect_frame
   }
 
-  pub fn subscribe(topic: &str, subscription_id: uint) -> Frame {
+  pub fn subscribe(subscription_id: &str, topic: &str) -> Frame {
     let mut header_list : HeaderList = HeaderList::with_capacity(3);
-    let subscription_id_str = format!("stomp-rs/{}", subscription_id);
     header_list.push(Header::from_key_value("destination", topic));
-    header_list.push(Header::from_key_value("id", subscription_id_str.as_slice()));
+    header_list.push(Header::from_key_value("id", subscription_id));
     header_list.push(Header::from_key_value("ack", "auto"));
     let subscribe_frame = Frame {
       command : "SUBSCRIBE".to_string(),
@@ -149,6 +146,17 @@ impl Frame {
       body : Vec::new()
     };
     subscribe_frame
+  }
+
+  pub fn unsubscribe(subscription_id: &str) -> Frame {
+    let mut header_list : HeaderList = HeaderList::with_capacity(1);
+    header_list.push(Header::from_key_value("id", subscription_id));
+    let unsubscribe_frame = Frame {
+      command : "UNSUBSCRIBE".to_string(),
+      headers : header_list,
+      body : Vec::new()
+    };
+    unsubscribe_frame
   }
 
   pub fn send(topic: &str, mime_type: &str, body: &[u8]) -> Frame {

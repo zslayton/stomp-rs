@@ -5,6 +5,7 @@ use std::io::InvalidInput;
 use std::str::from_utf8;
 use frame::Frame;
 use connection::Connection;
+use subscription::Subscription;
 use headers::Subscription;
 use headers::Id;
 use headers::StompHeaderSet;
@@ -12,7 +13,7 @@ use headers::StompHeaderSet;
 pub struct Session {
   next_message_id: uint,
   next_subscription_id: uint,
-  callbacks : HashMap<String, fn(Frame)->()>,
+  subscriptions: HashMap<String, ::subscription::Subscription>,
   connection : Connection,
 }
 
@@ -21,7 +22,7 @@ impl Session {
     Session {
       next_message_id: 0,
       next_subscription_id: 0,
-      callbacks: HashMap::with_capacity(1),
+      subscriptions: HashMap::with_capacity(1),
       connection: conn
     }
   }
@@ -41,18 +42,23 @@ impl Session {
     Ok(try!(send_frame.write(&mut self.connection.writer)))
   }
 
-  pub fn subscribe(&mut self, topic: &str, callback: fn(Frame)->()) -> IoResult<()> {
-    let subscription_id = self.generate_subscription_id();
-    let subscribe_frame = Frame::subscribe(topic, subscription_id);    
+  pub fn subscribe(&mut self, topic: &str, callback: fn(Frame)->()) -> IoResult<String> {
+    let next_id = self.generate_subscription_id();
+    let sub = ::subscription::Subscription::new(next_id, topic, callback);
+    let subscribe_frame = Frame::subscribe(sub.id.as_slice(), sub.topic.as_slice());
     println!("Sending frame:\n{}", subscribe_frame);
     try!(subscribe_frame.write(&mut self.connection.writer));
-    let subscription_id_str = match subscribe_frame.headers.get_id() {
-      Some(Id(s)) => s.to_string(),
-      None => unreachable!()
-    };
-    println!("Registering callback for subscription id: {}", subscription_id_str);
-    self.callbacks.insert(subscription_id_str, callback);
-    Ok(())
+    println!("Registering callback for subscription id: {}", sub.id);
+    let id_to_return = sub.id.to_string();
+    self.subscriptions.insert(sub.id.to_string(), sub);
+    Ok(id_to_return)
+  }
+
+  pub fn unsubscribe(&mut self, sub_id: &str) -> IoResult<()> {
+     let sub = self.subscriptions.pop_equiv(&sub_id);
+     let unsubscribe_frame = Frame::unsubscribe(sub_id.as_slice());
+     try!(unsubscribe_frame.write(&mut self.connection.writer));
+     Ok(())
   }
 
   pub fn receive(&mut self) -> IoResult<Frame> {
@@ -68,24 +74,24 @@ impl Session {
   }
 
   pub fn dispatch(&mut self, frame: Frame) -> () {
-       let subscription_str = match frame.headers.get_subscription() {
-        Some(Subscription(ref s)) => s.to_string(),
-        None => { 
-          println!("Error: frame did not contain a subscription header.");
-          println!("Frame: {}", frame);
-          return;
-        }
-      };
-
-      let callback = match self.callbacks.find_equiv(&(subscription_str.as_slice())) {
-        Some(c) => c,
-        None => {
-          println!("Error: Received message for unknown subscription: {}", subscription_str);
-          return;
-        }
-      };
-      println!("Found callback. Executing.");
-      (*callback)(frame);
+    let sub : &::subscription::Subscription;
+    let sub_id = match frame.headers.get_subscription() {
+     Some(Subscription(ref s)) => s.to_string(),
+     None => { 
+       println!("Error: frame did not contain a subscription header.");
+       println!("Frame: {}", frame);
+       return;
+     }
+   };
+   sub = match self.subscriptions.find_equiv(&sub_id.as_slice()) {
+     Some(sub) => sub,
+     None => {
+       println!("Error: Received message for unknown subscription: {}", sub_id);
+       return;
+     }
+   };
+    println!("Found callback. Executing.");
+    (sub.callback)(frame);
   } 
 
   pub fn listen(&mut self) {
@@ -97,6 +103,7 @@ impl Session {
           continue;
         }
       };
+      println!("Received message, dispatching.");
       self.dispatch(frame);
     }
   }      

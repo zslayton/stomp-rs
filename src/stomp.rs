@@ -14,5 +14,6 @@ pub fn connect(ip_address: &str, port: u16) -> IoResult<Session> {
 
 pub mod headers;
 pub mod connection;
+pub mod subscription;
 pub mod session;
 pub mod frame;

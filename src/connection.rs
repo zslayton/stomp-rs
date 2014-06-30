@@ -40,7 +40,8 @@ impl Connection {
   pub fn start_session(mut self) -> IoResult<Session> {
     let connect_frame = Frame::connect();
     let _ = try!(connect_frame.write(&mut self.writer));
-    let _ = try!(self.read_connected_frame());
+    let frame = try!(self.read_connected_frame());
+    println!("Received CONNECTED frame: {}", frame);
     Ok(Session::new(self))
   }
 }
