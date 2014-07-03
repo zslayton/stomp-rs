@@ -125,6 +125,18 @@ impl Frame {
     Ok(Frame{command: command, headers: header_list, body:body}) 
   }
 
+  pub fn connect() -> Frame {
+    let mut header_list : HeaderList = HeaderList::with_capacity(2);
+    header_list.push(Header::from_key_value("accept-version","1.2"));
+    header_list.push(Header::from_key_value("content-length","0"));
+    let connect_frame = Frame {
+       command : "CONNECT".to_string(),
+       headers : header_list,
+       body : Vec::new() 
+    };
+    connect_frame
+  }
+
   pub fn subscribe(topic: &str, subscription_id: uint) -> Frame {
     let mut header_list : HeaderList = HeaderList::with_capacity(3);
     let subscription_id_str = format!("stomp-rs/{}", subscription_id);

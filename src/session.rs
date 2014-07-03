@@ -5,9 +5,7 @@ use std::io::InvalidInput;
 use std::str::from_utf8;
 use frame::Frame;
 use connection::Connection;
-use headers::Header;
 use headers::Subscription;
-use headers::HeaderList;
 use headers::StompHeaderSet;
 
 pub struct Session {

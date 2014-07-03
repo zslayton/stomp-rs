@@ -6,8 +6,6 @@ use std::io::InvalidInput;
 use std::str::from_utf8;
 use frame::Frame;
 use session::Session;
-use headers::Header;
-use headers::HeaderList;
 
 pub struct Connection {
   pub ip_address : String,
@@ -27,18 +25,6 @@ impl Connection {
     })
   }
 
-  fn send_connect_frame(&mut self) -> IoResult<()> {
-    let mut header_list : HeaderList = HeaderList::with_capacity(2);
-    header_list.push(Header::from_str("accept-version:1.2").unwrap());
-    header_list.push(Header::from_str("content-length:0").unwrap());
-    let connect_frame = Frame {
-       command : "CONNECT".to_string(),
-       headers : header_list,
-       body : Vec::new() 
-    };
-    connect_frame.write(&mut self.writer)
-  }
-
   fn read_connected_frame(&mut self) -> IoResult<Frame> {
     let frame : Frame = try!(Frame::read(&mut self.reader));
     match frame.command.as_slice() {
@@ -52,11 +38,9 @@ impl Connection {
   }
 
   pub fn start_session(mut self) -> IoResult<Session> {
-    let _ = self.send_connect_frame(); // Handle this frame
-    let frame = match self.read_connected_frame() {
-      Ok(f) => f,
-      Err(e) => return Err(e)
-    };
+    let connect_frame = Frame::connect();
+    let _ = try!(connect_frame.write(&mut self.writer));
+    let _ = try!(self.read_connected_frame());
     Ok(Session::new(self))
   }
 }
