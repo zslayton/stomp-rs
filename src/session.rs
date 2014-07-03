@@ -33,42 +33,20 @@ impl Session {
     id
   }
 
-  fn send_subscribe_frame(&mut self, topic: &str, subscription_id: uint) -> IoResult<String> {
-    let mut header_list : HeaderList = HeaderList::with_capacity(3);
-    let topic_header_str = format!("destination:{}", topic);
-    header_list.push(Header::from_str(topic_header_str.as_slice()).unwrap());
-    let subscription_id_str = format!("stomp-rs/{}", subscription_id);
-    let subscription_header_str = format!("id:{}", subscription_id_str);
-    header_list.push(Header::from_str(subscription_header_str.as_slice()).unwrap());
-    header_list.push(Header::from_str("ack:auto").unwrap());
-    let subscribe_frame = Frame {
-       command : "SUBSCRIBE".to_string(),
-       headers : header_list,
-       body : Vec::new() 
-    };
-    println!("Sending frame:\n{}", subscribe_frame);
-    try!(subscribe_frame.write(&mut self.connection.writer));
-    Ok(subscription_id_str)
-  }
-
   pub fn send_text(&mut self, topic: &str, body: &str) -> IoResult<()> {
-    let mut header_list : HeaderList = HeaderList::with_capacity(3);
-    let topic_header_str = format!("destination:{}", topic);
-    let content_length_str = format!("content-length:{}", body.len());
-    header_list.push(Header::from_str(topic_header_str.as_slice()).unwrap());
-    header_list.push(Header::from_str(content_length_str.as_slice()).unwrap());
-    header_list.push(Header::from_str("content-type:text/plain").unwrap());
-    let send_frame = Frame {
-      command : "SEND".to_string(),
-      headers : header_list,
-      body : Vec::from_slice(body.as_bytes())
-    };
+    let send_frame = Frame::send(topic, body.as_bytes());
     Ok(try!(send_frame.write(&mut self.connection.writer)))
   }
  
   pub fn subscribe(&mut self, topic: &str, callback: fn(Frame)->()) -> IoResult<()> {
     let subscription_id = self.generate_subscription_id();
-    let subscription_id_str = try!(self.send_subscribe_frame(topic, subscription_id));
+    let subscribe_frame = Frame::subscribe(topic, subscription_id);    
+    println!("Sending frame:\n{}", subscribe_frame);
+    try!(subscribe_frame.write(&mut self.connection.writer));
+    let subscription_id_str = match subscribe_frame.headers.get_subscription() {
+      Some(Subscription(s)) => s.to_string(),
+      None => unreachable!()
+    };
     println!("Registering callback for subscription id: {}", subscription_id_str);
     self.callbacks.insert(subscription_id_str, callback);
     Ok(())

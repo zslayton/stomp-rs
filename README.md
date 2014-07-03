@@ -9,24 +9,26 @@ stomp-rs
 ```rust
 extern crate stomp;
 use stomp::frame::Frame;
+ 
+fn main() {
+  let mut session = match stomp::connect("127.0.0.1", 61613) {
+    Ok(session)  => session,
+    Err(error) => fail!("Could not connect to the server: {}", error)
+  };
+  
+  fn on_message(frame: Frame){
+    println!("Received a message:\n{}", frame);
+  }
+  
+  let topic = "/topic/messages";
+  session.subscribe(topic, on_message);
+  
+  session.send_text(topic, "Animal");
+  session.send_text(topic, "Vegetable");
+  session.send_text(topic, "Mineral");
 
-let session = match stomp::connect("127.0.0.1", 61613) {
-  Ok(session)  => session,
-  Err(error) => fail!("Could not connect to the server: {}", error)
-};
-
-fn on_message(frame: Frame){
-  println!("Received a message:\n{}", frame);
+  session.listen(); // Loops infinitely, awaiting messages
 }
-
-let topic = "/topic/messages";
-session.subscribe(topic, on_message);
-
-session.send_text(topic, "Animal");
-session.send_text(topic, "Vegetable";)
-session.send_text(topic, "Mineral");
-
-session.listen(); // Loops infinitely, awaiting messages
 ```
 
 ### Example Cargo.toml

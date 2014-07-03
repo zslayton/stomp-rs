@@ -124,4 +124,31 @@ impl Frame {
     }
     Ok(Frame{command: command, headers: header_list, body:body}) 
   }
+
+  pub fn subscribe(topic: &str, subscription_id: uint) -> Frame {
+    let mut header_list : HeaderList = HeaderList::with_capacity(3);
+    let subscription_id_str = format!("stomp-rs/{}", subscription_id);
+    header_list.push(Header::from_key_value("destination", topic));
+    header_list.push(Header::from_key_value("id", subscription_id_str.as_slice()));
+    header_list.push(Header::from_key_value("ack", "auto"));
+    let subscribe_frame = Frame {
+      command : "SUBSCRIBE".to_string(),
+      headers : header_list,
+      body : Vec::new()
+    };
+    subscribe_frame
+  }
+
+  pub fn send(topic: &str, body: &[u8]) -> Frame {
+    let mut header_list : HeaderList = HeaderList::with_capacity(3);
+    header_list.push(Header::from_key_value("destination", topic));
+    header_list.push(Header::from_key_value("content-length", body.len().to_str().as_slice()));
+    header_list.push(Header::from_key_value("content-type","text/plain"));
+    let send_frame = Frame {
+      command : "SEND".to_string(),
+      headers : header_list,
+      body : Vec::from_slice(body)
+    };
+    send_frame
+  }
 }

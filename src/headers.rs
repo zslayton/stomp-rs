@@ -48,6 +48,14 @@ impl Header {
     Some(header)
   }
 
+  pub fn from_key_value(key: &str, value: &str) -> Header {
+    let raw_string = format!("{}:{}", key, value);
+    Header {
+      buffer: raw_string,
+      delimiter_index: key.len()
+    }
+  }
+
   pub fn get_raw<'a>(&'a self) -> &'a str {
     self.buffer.as_slice()
   }
