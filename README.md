@@ -37,6 +37,7 @@ fn main() {
 
 name = "stomp_test"
 version = "0.0.1"
+authors = ["your_name_here"]
 
 [[bin]]
 
