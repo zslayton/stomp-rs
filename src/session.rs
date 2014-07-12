@@ -6,7 +6,12 @@ use std::str::from_utf8;
 use frame::Frame;
 use connection::Connection;
 use subscription::Subscription;
+use subscription::AckMode;
+use subscription::Auto;
+use subscription::Client;
+use subscription::ClientIndividual;
 use headers::Subscription;
+use headers::Ack;
 use headers::Id;
 use headers::StompHeaderSet;
 
@@ -42,10 +47,10 @@ impl Session {
     Ok(try!(send_frame.write(&mut self.connection.writer)))
   }
 
-  pub fn subscribe(&mut self, topic: &str, callback: fn(Frame)->()) -> IoResult<String> {
+  pub fn subscribe(&mut self, topic: &str, ack_mode: AckMode, callback: fn(Frame)->bool)-> IoResult<String> {
     let next_id = self.generate_subscription_id();
-    let sub = ::subscription::Subscription::new(next_id, topic, callback);
-    let subscribe_frame = Frame::subscribe(sub.id.as_slice(), sub.topic.as_slice());
+    let sub = ::subscription::Subscription::new(next_id, topic, ack_mode, callback);
+    let subscribe_frame = Frame::subscribe(sub.id.as_slice(), sub.topic.as_slice(), ack_mode);
     println!("Sending frame:\n{}", subscribe_frame);
     try!(subscribe_frame.write(&mut self.connection.writer));
     println!("Registering callback for subscription id: {}", sub.id);
@@ -76,22 +81,56 @@ impl Session {
   pub fn dispatch(&mut self, frame: Frame) -> () {
     let sub : &::subscription::Subscription;
     let sub_id = match frame.headers.get_subscription() {
-     Some(Subscription(ref s)) => s.to_string(),
-     None => { 
-       println!("Error: frame did not contain a subscription header.");
-       println!("Frame: {}", frame);
-       return;
-     }
-   };
-   sub = match self.subscriptions.find_equiv(&sub_id.as_slice()) {
-     Some(sub) => sub,
-     None => {
-       println!("Error: Received message for unknown subscription: {}", sub_id);
-       return;
-     }
-   };
-    println!("Found callback. Executing.");
-    (sub.callback)(frame);
+      Some(Subscription(ref s)) => s.to_string(),
+      None => { 
+        println!("Error: frame did not contain a subscription header.");
+        println!("Frame: {}", frame);
+        return;
+      }
+    };
+    sub = match self.subscriptions.find_equiv(&sub_id.as_slice()) {
+      Some(sub) => sub,
+      None => {
+        println!("Error: Received message for unknown subscription: {}", sub_id);
+        return;
+      }
+    };
+    println!("Executing.");
+    match sub.ack_mode {
+      Auto => {
+        println!("Auto ack, no frame sent.");
+        let _ = (sub.callback)(frame);
+      }
+      Client | ClientIndividual => {
+        let ack_id = match frame.headers.get_ack() {
+          Some(Ack(ack_id)) => ack_id.to_string(),
+          _ => {
+            println!("Error: Message did not have an ack header.");
+            return;
+          }
+        };
+        let processed_succesfully = (sub.callback)(frame);
+        if processed_succesfully {
+          let ack_frame = Frame::ack(ack_id.as_slice());
+          match ack_frame.write(&mut self.connection.writer) {
+            Err(error) => {
+              println!("Couldn't send ACK: {}", error);
+              return;
+            },
+            _ => println!("ACK sent.")
+          }
+        } else {
+          let nack_frame = Frame::nack(ack_id.as_slice());
+          match nack_frame.write(&mut self.connection.writer) {
+            Err(error) => {
+              println!("Couldn't send NACK: {}", error);
+              return;
+            },
+            _ => println!("NACK sent.")
+          }
+        }
+      }
+    }
   } 
 
   pub fn listen(&mut self) {

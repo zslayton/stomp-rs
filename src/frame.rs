@@ -2,6 +2,7 @@ use headers::HeaderList;
 use headers::Header;
 use headers::ContentLength;
 use headers::StompHeaderSet;
+use subscription::AckMode;
 use std::io::IoResult;
 use std::io::IoError;
 use std::io::InvalidInput;
@@ -135,11 +136,11 @@ impl Frame {
     connect_frame
   }
 
-  pub fn subscribe(subscription_id: &str, topic: &str) -> Frame {
+  pub fn subscribe(subscription_id: &str, topic: &str, ack_mode: AckMode) -> Frame {
     let mut header_list : HeaderList = HeaderList::with_capacity(3);
     header_list.push(Header::from_key_value("destination", topic));
     header_list.push(Header::from_key_value("id", subscription_id));
-    header_list.push(Header::from_key_value("ack", "auto"));
+    header_list.push(Header::from_key_value("ack", ack_mode.as_text()));
     let subscribe_frame = Frame {
       command : "SUBSCRIBE".to_string(),
       headers : header_list,
@@ -157,6 +158,28 @@ impl Frame {
       body : Vec::new()
     };
     unsubscribe_frame
+  }
+
+  pub fn ack(ack_id: &str) -> Frame {
+    let mut header_list : HeaderList = HeaderList::with_capacity(1);
+    header_list.push(Header::from_key_value("id", ack_id));
+    let ack_frame = Frame {
+      command : "ACK".to_string(),
+      headers : header_list,
+      body : Vec::new()
+    };
+    ack_frame
+  }
+
+  pub fn nack(message_id: &str) -> Frame {
+    let mut header_list : HeaderList = HeaderList::with_capacity(1);
+    header_list.push(Header::from_key_value("id", message_id));
+    let nack_frame= Frame {
+      command : "NACK".to_string(),
+      headers : header_list,
+      body : Vec::new()
+    };
+    nack_frame
   }
 
   pub fn send(topic: &str, mime_type: &str, body: &[u8]) -> Frame {

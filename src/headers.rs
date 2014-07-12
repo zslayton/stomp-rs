@@ -71,22 +71,24 @@ impl Header {
 }
 
 // Headers in the Spec
-pub struct AcceptVersion(Vec<StompVersion>);
+pub struct AcceptVersion(pub Vec<StompVersion>);
+pub struct Ack<'a>(pub &'a str);
 pub struct ContentLength(pub uint);
-pub struct Custom(Header);
-pub struct Destination<'a> (&'a str);
-pub struct HeartBeat(uint, uint);
-pub struct Host<'a>(&'a str);
+pub struct Custom(pub Header);
+pub struct Destination<'a> (pub &'a str);
+pub struct HeartBeat(pub uint, uint);
+pub struct Host<'a>(pub &'a str);
 pub struct Id<'a>(pub &'a str);
-pub struct Login<'a>(&'a str);
-pub struct Passcode<'a>(&'a str);
-pub struct Receipt<'a>(&'a str);
-pub struct ReceiptId<'a>(&'a str);
-pub struct Server<'a>(&'a str);
-pub struct Session<'a> (&'a str);
+pub struct Login<'a>(pub &'a str);
+pub struct MessageId<'a>(pub &'a str);
+pub struct Passcode<'a>(pub &'a str);
+pub struct Receipt<'a>(pub &'a str);
+pub struct ReceiptId<'a>(pub &'a str);
+pub struct Server<'a>(pub &'a str);
+pub struct Session<'a> (pub &'a str);
 pub struct Subscription<'a>(pub &'a str);
-pub struct Transaction<'a>(&'a str);
-pub struct Version(StompVersion);
+pub struct Transaction<'a>(pub &'a str);
+pub struct Version(pub StompVersion);
 
 pub enum StompVersion {
   Stomp_v1_0,
@@ -94,22 +96,17 @@ pub enum StompVersion {
   Stomp_v1_2,
 }
 
-pub enum AckMode {
-  Auto,
-  Client,
-  ClientIndividual
-}
-
-
 pub trait StompHeaderSet {
   fn get_content_length(&self) -> Option<ContentLength>;
   fn get_header<'a>(&'a self, key: &str) -> Option<&'a Header>;
   fn get_accept_version<'a>(&'a self) -> Option<Vec<StompVersion>>;
+  fn get_ack<'a>(&'a self) -> Option<Ack<'a>>;
   fn get_destination<'a>(&'a self) -> Option<Destination<'a>>;
   fn get_heart_beat(&self) -> Option<HeartBeat>;
   fn get_host<'a>(&'a self) -> Option<Host<'a>>;
   fn get_id<'a>(&'a self) -> Option<Id<'a>>;
   fn get_login<'a>(&'a self) -> Option<Login<'a>>;
+  fn get_message_id<'a>(&'a self) -> Option<MessageId<'a>>;
   fn get_passcode<'a>(&'a self) -> Option<Passcode<'a>>;
   fn get_receipt<'a>(&'a self) -> Option<Receipt<'a>>;
   fn get_receipt_id<'a>(&'a self) -> Option<ReceiptId<'a>>;
@@ -144,6 +141,14 @@ impl StompHeaderSet for HeaderList {
     }).collect();
     Some(versions)
   }
+
+  fn get_ack<'a>(&'a self) -> Option<Ack<'a>> {
+    match self.get_header("ack") {
+      Some(h) => Some(Ack(h.get_value())),
+      None => None
+    }
+  }
+
   fn get_destination<'a>(&'a self) -> Option<Destination<'a>> {
     match self.get_header("destination") {
       Some(h) => Some(Destination(h.get_value())),
@@ -180,6 +185,13 @@ impl StompHeaderSet for HeaderList {
   fn get_login<'a>(&'a self) -> Option<Login<'a>> {
     match self.get_header("login"){
       Some(h) => Some(Login(h.get_value())),
+      None => None
+    }
+  }
+
+  fn get_message_id<'a>(&'a self) -> Option<MessageId<'a>> {
+    match self.get_header("message-id"){
+      Some(h) => Some(MessageId(h.get_value())),
       None => None
     }
   }
