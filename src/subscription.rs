@@ -16,15 +16,20 @@ impl AckMode {
   }
 }
 
+pub enum AckOrNack {
+  Ack,
+  Nack
+}
+
 pub struct Subscription {
   pub id : String,
   pub topic: String,
   pub ack_mode: AckMode,
-  pub callback: fn(Frame)-> bool
+  pub callback: fn(Frame)-> AckOrNack
 }
 
 impl Subscription {
-  pub fn new(id: uint, topic: &str, ack_mode: AckMode, callback: fn(Frame)->bool) -> Subscription {
+  pub fn new(id: uint, topic: &str, ack_mode: AckMode, callback: fn(Frame)->AckOrNack) -> Subscription {
     Subscription {
       id: format!("stomp-rs/{}",id),
       topic: topic.to_string(),

@@ -8,6 +8,7 @@ use connection::Connection;
 use subscription::Subscription;
 use subscription::AckMode;
 use subscription::Auto;
+use subscription::AckOrNack;
 use subscription::Client;
 use subscription::ClientIndividual;
 use headers::Subscription;
@@ -47,7 +48,7 @@ impl Session {
     Ok(try!(send_frame.write(&mut self.connection.writer)))
   }
 
-  pub fn subscribe(&mut self, topic: &str, ack_mode: AckMode, callback: fn(Frame)->bool)-> IoResult<String> {
+  pub fn subscribe(&mut self, topic: &str, ack_mode: AckMode, callback: fn(Frame)->AckOrNack)-> IoResult<String> {
     let next_id = self.generate_subscription_id();
     let sub = ::subscription::Subscription::new(next_id, topic, ack_mode, callback);
     let subscribe_frame = Frame::subscribe(sub.id.as_slice(), sub.topic.as_slice(), ack_mode);
@@ -109,27 +110,29 @@ impl Session {
             return;
           }
         };
-        let processed_succesfully = (sub.callback)(frame);
-        if processed_succesfully {
-          let ack_frame = Frame::ack(ack_id.as_slice());
-          match ack_frame.write(&mut self.connection.writer) {
-            Err(error) => {
-              println!("Couldn't send ACK: {}", error);
-              return;
-            },
-            _ => println!("ACK sent.")
-          }
-        } else {
-          let nack_frame = Frame::nack(ack_id.as_slice());
-          match nack_frame.write(&mut self.connection.writer) {
-            Err(error) => {
-              println!("Couldn't send NACK: {}", error);
-              return;
-            },
-            _ => println!("NACK sent.")
-          }
-        }
-      }
+        match (sub.callback)(frame) {
+          ::subscription::Ack => {
+            let ack_frame = Frame::ack(ack_id.as_slice());
+            match ack_frame.write(&mut self.connection.writer) {
+              Err(error) => {
+                println!("Couldn't send ACK: {}", error);
+                return;
+              },
+              _ => println!("ACK sent.")
+            }
+          },
+          ::subscription::Nack => {
+            let nack_frame = Frame::nack(ack_id.as_slice());
+            match nack_frame.write(&mut self.connection.writer) {
+              Err(error) => {
+                println!("Couldn't send NACK: {}", error);
+                return;
+              },
+              _ => println!("NACK sent.")
+            }
+          } // Nack
+        } // match
+      } // Client | ...
     }
   } 
 
