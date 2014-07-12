@@ -25,10 +25,13 @@ fn main() {
   let topic = "/topic/messages";
   session.subscribe(topic, Client, on_message); // 'client' acknowledgement mode
   
-  session.send_text(topic, "Animal");
+  // Send arbitrary bytes with a specified MIME type
+  session.send_bytes(topic, "text/plain", "Animal".as_bytes());
+  
+  // Send UTF-8 text with an assumed MIME type of 'text/plain'
   session.send_text(topic, "Vegetable");
   session.send_text(topic, "Mineral");
-
+  
   session.listen(); // Loops infinitely, awaiting messages
 }
 ```
