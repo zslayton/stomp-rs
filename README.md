@@ -9,19 +9,21 @@ stomp-rs
 ```rust
 extern crate stomp;
 use stomp::frame::Frame;
- 
+use stomp::subscription::Auto; // Acknowledgement mode 'auto'
+
 fn main() {
   let mut session = match stomp::connect("127.0.0.1", 61613) {
     Ok(session)  => session,
     Err(error) => fail!("Could not connect to the server: {}", error)
   };
   
-  fn on_message(frame: Frame){
+  fn on_message(frame: Frame) -> bool {
     println!("Received a message:\n{}", frame);
+    true // Frame handled succesfully. Will send an ACK in Client or ClientIndividual acknowledgement modes
   }
   
   let topic = "/topic/messages";
-  session.subscribe(topic, on_message);
+  session.subscribe(topic, Auto, on_message);
   
   session.send_text(topic, "Animal");
   session.send_text(topic, "Vegetable");
