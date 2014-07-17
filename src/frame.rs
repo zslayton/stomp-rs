@@ -183,7 +183,7 @@ impl Frame {
   }
 
   pub fn send(topic: &str, mime_type: &str, body: &[u8]) -> Frame {
-    let mut header_list : HeaderList = HeaderList::with_capacity(3);
+    let mut header_list : HeaderList = HeaderList::with_capacity(3+1);
     header_list.push(Header::from_key_value("destination", topic));
     header_list.push(Header::from_key_value("content-length", body.len().to_str().as_slice()));
     header_list.push(Header::from_key_value("content-type", mime_type));
@@ -193,5 +193,38 @@ impl Frame {
       body : Vec::from_slice(body)
     };
     send_frame
+  }
+
+  pub fn begin(transaction_id: &str) -> Frame {
+    let mut header_list : HeaderList = HeaderList::with_capacity(1);
+    header_list.push(Header::from_key_value("transaction", transaction_id));
+    let begin_frame = Frame {
+      command : "BEGIN".to_string(),
+      headers : header_list,
+      body : Vec::new()
+    };
+    begin_frame 
+  }
+
+  pub fn abort(transaction_id: &str) -> Frame {
+    let mut header_list : HeaderList = HeaderList::with_capacity(1);
+    header_list.push(Header::from_key_value("transaction", transaction_id));
+    let abort_frame = Frame {
+      command : "ABORT".to_string(),
+      headers : header_list,
+      body : Vec::new()
+    };
+    abort_frame 
+  }
+
+  pub fn commit(transaction_id: &str) -> Frame {
+    let mut header_list : HeaderList = HeaderList::with_capacity(1);
+    header_list.push(Header::from_key_value("transaction", transaction_id));
+    let commit_frame = Frame {
+      command : "COMMIT".to_string(),
+      headers : header_list,
+      body : Vec::new()
+    };
+    commit_frame 
   }
 }

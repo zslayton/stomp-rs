@@ -12,8 +12,9 @@ pub fn connect(ip_address: &str, port: u16) -> IoResult<Session> {
   connection.start_session()
 }
 
-pub mod headers;
 pub mod connection;
-pub mod subscription;
-pub mod session;
 pub mod frame;
+pub mod headers;
+pub mod session;
+pub mod subscription;
+pub mod transaction;

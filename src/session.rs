@@ -5,7 +5,6 @@ use std::io::InvalidInput;
 use std::str::from_utf8;
 use frame::Frame;
 use connection::Connection;
-use subscription::Subscription;
 use subscription::AckMode;
 use subscription::Auto;
 use subscription::AckOrNack;
@@ -15,22 +14,29 @@ use headers::Subscription;
 use headers::Ack;
 use headers::Id;
 use headers::StompHeaderSet;
+use transaction::Transaction;
 
 pub struct Session {
-  next_message_id: uint,
+  next_transaction_id: uint,
   next_subscription_id: uint,
   subscriptions: HashMap<String, ::subscription::Subscription>,
-  connection : Connection,
+  pub connection : Connection,
 }
 
 impl Session {
   pub fn new(conn: Connection) -> Session {
     Session {
-      next_message_id: 0,
+      next_transaction_id: 0,
       next_subscription_id: 0,
       subscriptions: HashMap::with_capacity(1),
       connection: conn
     }
+  }
+
+  fn generate_transaction_id(&mut self) -> uint {
+    let id = self.next_transaction_id;
+    self.next_transaction_id += 1;
+    id
   }
 
   fn generate_subscription_id(&mut self) -> uint {
@@ -65,6 +71,12 @@ impl Session {
      let unsubscribe_frame = Frame::unsubscribe(sub_id.as_slice());
      try!(unsubscribe_frame.write(&mut self.connection.writer));
      Ok(())
+  }
+
+  pub fn begin_transaction<'a>(&'a mut self) -> IoResult<Transaction<'a>> {
+    let mut tx = Transaction::new(self.generate_transaction_id(), self);
+    let _ = try!(tx.begin());
+    Ok(tx)
   }
 
   pub fn receive(&mut self) -> IoResult<Frame> {
