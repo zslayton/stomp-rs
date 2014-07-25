@@ -36,6 +36,20 @@ fn main() {
 }
 ```
 
+### Example Transaction
+```rust
+  let mut tx = match session.begin_transaction() {
+    Ok(tx) => tx,
+    Err(error) => fail!("Could not begin new transaction: {}", error)
+  };
+
+  tx.send_text(topic, "Animal");
+  tx.send_text(topic, "Vegetable");
+  tx.send_text(topic, "Mineral");
+
+  tx.commit(); // Or tx.abort();
+```
+
 ### Example Cargo.toml
 ```toml
 [package]
