@@ -5,7 +5,8 @@ stomp-rs
 `stomp-rs` is in an alpha state and should not be used in production code.
 
 
-### Example stomp-rs code
+## Examples
+### Subscribe / Send
 ```rust
 extern crate stomp;
 use stomp::frame::Frame;
@@ -36,7 +37,7 @@ fn main() {
 }
 ```
 
-### Example Transaction
+### Transactions
 ```rust
   let mut tx = match session.begin_transaction() {
     Ok(tx) => tx,
@@ -50,7 +51,7 @@ fn main() {
   tx.commit(); // Or tx.abort();
 ```
 
-### Example Cargo.toml
+### Cargo.toml
 ```toml
 [package]
 
