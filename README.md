@@ -51,7 +51,7 @@ fn main() {
   tx.commit(); // Or tx.abort();
 ```
 
-### Handle ERROR frames
+### Handling ERROR frames
 ```rust
   fn on_error(frame: Frame) {
     fail!("ERROR frame received:\n{}", frame);
