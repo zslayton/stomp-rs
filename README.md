@@ -6,7 +6,7 @@ stomp-rs
 
 
 ## Examples
-### Subscribe / Send
+### Connect / Subscribe / Send
 ```rust
 extern crate stomp;
 use stomp::frame::Frame;
@@ -49,6 +49,15 @@ fn main() {
   tx.send_text(topic, "Mineral");
 
   tx.commit(); // Or tx.abort();
+```
+
+### Handle ERROR frames
+```rust
+  fn on_error(frame: Frame) {
+    fail!("ERROR frame received:\n{}", frame);
+  }
+
+  session.on_error(on_error);
 ```
 
 ### Cargo.toml
