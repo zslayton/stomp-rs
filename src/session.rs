@@ -21,6 +21,7 @@ pub struct Session {
   next_subscription_id: uint,
   subscriptions: HashMap<String, ::subscription::Subscription>,
   pub connection : Connection,
+  error_callback: fn(Frame) -> ()
 }
 
 impl Session {
@@ -29,8 +30,17 @@ impl Session {
       next_transaction_id: 0,
       next_subscription_id: 0,
       subscriptions: HashMap::with_capacity(1),
-      connection: conn
+      connection: conn,
+      error_callback: Session::default_error_callback
     }
+  }
+ 
+  fn default_error_callback(frame : Frame) {
+    println!("ERROR frame received:\n{}", frame);
+  }
+
+  pub fn on_error(&mut self, callback: fn(Frame)) {
+    self.error_callback = callback;
   }
 
   fn generate_transaction_id(&mut self) -> uint {
@@ -80,18 +90,16 @@ impl Session {
   }
 
   pub fn receive(&mut self) -> IoResult<Frame> {
-    let frame = try!(Frame::read(&mut self.connection.reader));
-    match frame.command.as_slice() {
-      "MESSAGE" => Ok(frame),
-      _ => Err(IoError{
-             kind: InvalidInput, 
-             desc: "Non-MESSAGE frame received.",
-             detail: from_utf8(frame.body.as_slice()).map(|err: &str| err.to_string())
-           })
-    } 
+    Ok(try!(Frame::read(&mut self.connection.reader)))
   }
 
   pub fn dispatch(&mut self, frame: Frame) -> () {
+    // Check for ERROR frame
+    match frame.command.as_slice() {
+       "ERROR" => return (self.error_callback)(frame),
+        _ => {} // No operation
+    };
+
     let sub : &::subscription::Subscription;
     let sub_id = match frame.headers.get_subscription() {
       Some(Subscription(ref s)) => s.to_string(),
