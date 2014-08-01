@@ -185,7 +185,7 @@ impl Frame {
   pub fn send(topic: &str, mime_type: &str, body: &[u8]) -> Frame {
     let mut header_list : HeaderList = HeaderList::with_capacity(3+1);
     header_list.push(Header::from_key_value("destination", topic));
-    header_list.push(Header::from_key_value("content-length", body.len().to_str().as_slice()));
+    header_list.push(Header::from_key_value("content-length", body.len().to_string().as_slice()));
     header_list.push(Header::from_key_value("content-type", mime_type));
     let send_frame = Frame {
       command : "SEND".to_string(),
