@@ -41,7 +41,7 @@ impl Connection {
     let connect_frame = Frame::connect();
     let _ = try!(connect_frame.write(&mut self.writer));
     let frame = try!(self.read_connected_frame());
-    println!("Received CONNECTED frame: {}", frame);
+    debug!("Received CONNECTED frame: {}", frame);
     Ok(Session::new(self))
   }
 }

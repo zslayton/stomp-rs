@@ -1,3 +1,4 @@
+use log;
 use std::collections::hashmap::HashMap;
 use std::io::IoResult;
 use std::io::IoError;
@@ -36,7 +37,7 @@ impl Session {
   }
  
   fn default_error_callback(frame : Frame) {
-    println!("ERROR frame received:\n{}", frame);
+    debug!("ERROR frame received:\n{}", frame);
   }
 
   pub fn on_error(&mut self, callback: fn(Frame)) {
@@ -68,9 +69,9 @@ impl Session {
     let next_id = self.generate_subscription_id();
     let sub = ::subscription::Subscription::new(next_id, topic, ack_mode, callback);
     let subscribe_frame = Frame::subscribe(sub.id.as_slice(), sub.topic.as_slice(), ack_mode);
-    println!("Sending frame:\n{}", subscribe_frame);
+    debug!("Sending frame:\n{}", subscribe_frame);
     try!(subscribe_frame.write(&mut self.connection.writer));
-    println!("Registering callback for subscription id: {}", sub.id);
+    debug!("Registering callback for subscription id: {}", sub.id);
     let id_to_return = sub.id.to_string();
     self.subscriptions.insert(sub.id.to_string(), sub);
     Ok(id_to_return)
@@ -104,29 +105,29 @@ impl Session {
     let sub_id = match frame.headers.get_subscription() {
       Some(Subscription(ref s)) => s.to_string(),
       None => { 
-        println!("Error: frame did not contain a subscription header.");
-        println!("Frame: {}", frame);
+        debug!("Error: frame did not contain a subscription header.");
+        debug!("Frame: {}", frame);
         return;
       }
     };
     sub = match self.subscriptions.find_equiv(&sub_id.as_slice()) {
       Some(sub) => sub,
       None => {
-        println!("Error: Received message for unknown subscription: {}", sub_id);
+        debug!("Error: Received message for unknown subscription: {}", sub_id);
         return;
       }
     };
-    println!("Executing.");
+    debug!("Executing.");
     match sub.ack_mode {
       Auto => {
-        println!("Auto ack, no frame sent.");
+        debug!("Auto ack, no frame sent.");
         let _ = (sub.callback)(frame);
       }
       Client | ClientIndividual => {
         let ack_id = match frame.headers.get_ack() {
           Some(Ack(ack_id)) => ack_id.to_string(),
           _ => {
-            println!("Error: Message did not have an ack header.");
+            debug!("Error: Message did not have an ack header.");
             return;
           }
         };
@@ -135,20 +136,20 @@ impl Session {
             let ack_frame = Frame::ack(ack_id.as_slice());
             match ack_frame.write(&mut self.connection.writer) {
               Err(error) => {
-                println!("Couldn't send ACK: {}", error);
+                debug!("Couldn't send ACK: {}", error);
                 return;
               },
-              _ => println!("ACK sent.")
+              _ => debug!("ACK sent.")
             }
           },
           ::subscription::Nack => {
             let nack_frame = Frame::nack(ack_id.as_slice());
             match nack_frame.write(&mut self.connection.writer) {
               Err(error) => {
-                println!("Couldn't send NACK: {}", error);
+                debug!("Couldn't send NACK: {}", error);
                 return;
               },
-              _ => println!("NACK sent.")
+              _ => debug!("NACK sent.")
             }
           } // Nack
         } // match
@@ -161,11 +162,11 @@ impl Session {
       let frame = match self.receive() {
         Ok(f) => f,
         Err(e) => {
-          println!("Error receiving frame: {}", e);
+          debug!("Error receiving frame: {}", e);
           continue;
         }
       };
-      println!("Received message, dispatching.");
+      debug!("Received message, dispatching.");
       self.dispatch(frame);
     }
   }      

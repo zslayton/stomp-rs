@@ -1,3 +1,4 @@
+use log;
 use headers::HeaderList;
 use headers::Header;
 use headers::ContentLength;
@@ -42,7 +43,7 @@ impl Frame {
 
   pub fn to_str(&self) -> String {
     let space_required = self.character_count();
-    println!("Required Space: {}", space_required);
+    debug!("Required Space: {}", space_required);
     let mut frame_string = String::with_capacity(space_required);
     frame_string = frame_string.append(self.command.as_slice());
     frame_string = frame_string.append("\n");
@@ -56,12 +57,12 @@ impl Frame {
       None => "<Binary content>" // Space is wasted in this case. Could shrink to fit?
     };
     frame_string = frame_string.append(body_string);
-    println!("Final string length: {}", frame_string.len());
+    debug!("Final string length: {}", frame_string.len());
     frame_string
   }
 
   pub fn write<T: Writer>(&self, stream: &mut T) -> IoResult<()> {
-    println!("Sending frame:\n{}", self.to_str());
+    debug!("Sending frame:\n{}", self.to_str());
     try!(stream.write_str(self.command.as_slice()));
     try!(stream.write_str("\n"));
     for header in self.headers.iter() {
@@ -71,7 +72,7 @@ impl Frame {
     try!(stream.write_str("\n"));
     try!(stream.write(self.body.as_slice()));
     try!(stream.write(&[0]));
-    println!("write() complete.");
+    debug!("write() complete.");
     Ok(())
   }
 

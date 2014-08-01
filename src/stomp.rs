@@ -2,6 +2,10 @@
 #![crate_type = "lib"]
 #![desc = "A STOMP 1.2 client implementation in Rust."]
 #![license = "MIT"]
+#![feature(phase)]
+
+#[phase(plugin, link)]
+extern crate log;
 
 use std::io::IoResult;
 use session::Session;
