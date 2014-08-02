@@ -71,7 +71,7 @@ impl Session {
  
   pub fn send_bytes(&mut self, topic: &str, mime_type: &str, body: &[u8]) -> IoResult<()> {
     let send_frame = Frame::send(topic, mime_type, body);
-    Ok(try!(send_frame.write(&mut self.connection.writer)))
+    self.send(send_frame)
   }
 
   pub fn send_bytes_with_receipt(&mut self, topic: &str, mime_type: &str, body: &[u8]) -> IoResult<()> {
@@ -98,8 +98,12 @@ impl Session {
   pub fn unsubscribe(&mut self, sub_id: &str) -> IoResult<()> {
      let sub = self.subscriptions.pop_equiv(&sub_id);
      let unsubscribe_frame = Frame::unsubscribe(sub_id.as_slice());
-     try!(unsubscribe_frame.write(&mut self.connection.writer));
-     Ok(())
+     self.send(unsubscribe_frame)
+  }
+
+  pub fn disconnect(&mut self) -> IoResult<()> {
+    let disconnect_frame = Frame::disconnect();
+    self.send(disconnect_frame)
   }
 
   pub fn begin_transaction<'a>(&'a mut self) -> IoResult<Transaction<'a>> {
@@ -110,6 +114,11 @@ impl Session {
 
   pub fn receive(&mut self) -> IoResult<Frame> {
     Ok(try!(Frame::read(&mut self.connection.reader)))
+  }
+
+  pub fn send(&mut self, frame: Frame) -> IoResult<()> {
+    let _ = try!(frame.write(&mut self.connection.writer));
+    Ok(())
   }
 
   pub fn dispatch(&mut self, frame: Frame) -> () {
@@ -156,6 +165,7 @@ impl Session {
         match (sub.callback)(frame) {
           ::subscription::Ack => {
             let ack_frame = Frame::ack(ack_id.as_slice());
+            //match self.send(ack_frame) {
             match ack_frame.write(&mut self.connection.writer) {
               Err(error) => {
                 debug!("Couldn't send ACK: {}", error);
@@ -166,6 +176,7 @@ impl Session {
           },
           ::subscription::Nack => {
             let nack_frame = Frame::nack(ack_id.as_slice());
+            //match self.send(nack_frame) {
             match nack_frame.write(&mut self.connection.writer) {
               Err(error) => {
                 debug!("Couldn't send NACK: {}", error);

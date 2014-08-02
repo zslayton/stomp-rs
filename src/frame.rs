@@ -137,6 +137,18 @@ impl Frame {
     connect_frame
   }
 
+  pub fn disconnect() -> Frame {
+    let mut header_list : HeaderList = HeaderList::with_capacity(1);
+    header_list.push(Header::from_key_value("receipt","msg/disconnect"));
+    let disconnect_frame = Frame {
+       command : "DISCONNECT".to_string(),
+       headers : header_list,
+       body : Vec::new() 
+    };
+    disconnect_frame
+  }
+
+
   pub fn subscribe(subscription_id: &str, topic: &str, ack_mode: AckMode) -> Frame {
     let mut header_list : HeaderList = HeaderList::with_capacity(3);
     header_list.push(Header::from_key_value("destination", topic));
