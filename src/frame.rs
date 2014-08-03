@@ -1,4 +1,3 @@
-use log;
 use headers::HeaderList;
 use headers::Header;
 use headers::ContentLength;
@@ -43,7 +42,6 @@ impl Frame {
 
   pub fn to_str(&self) -> String {
     let space_required = self.character_count();
-    debug!("Required Space: {}", space_required);
     let mut frame_string = String::with_capacity(space_required);
     frame_string = frame_string.append(self.command.as_slice());
     frame_string = frame_string.append("\n");
@@ -57,7 +55,6 @@ impl Frame {
       None => "<Binary content>" // Space is wasted in this case. Could shrink to fit?
     };
     frame_string = frame_string.append(body_string);
-    debug!("Final string length: {}", frame_string.len());
     frame_string
   }
 

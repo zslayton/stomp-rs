@@ -1,9 +1,5 @@
-use log;
 use std::collections::hashmap::HashMap;
 use std::io::IoResult;
-use std::io::IoError;
-use std::io::InvalidInput;
-use std::str::from_utf8;
 use frame::Frame;
 use connection::Connection;
 use subscription::AckMode;
@@ -14,37 +10,76 @@ use subscription::ClientIndividual;
 use headers::Header;
 use headers::Subscription;
 use headers::Ack;
-use headers::Id;
+use headers::ReceiptId;
 use headers::StompHeaderSet;
 use transaction::Transaction;
+
+//TODO: Replace the HashMap<String, ReceiptStatus> with a Set when
+// Sets finally get `equiv` functionality
+enum ReceiptStatus {
+  Outstanding
+}
 
 pub struct Session {
   next_transaction_id: uint,
   next_subscription_id: uint,
   next_receipt_id: uint,
   subscriptions: HashMap<String, ::subscription::Subscription>,
+  outstanding_receipts: HashMap<String, ReceiptStatus>, 
   pub connection : Connection,
+  receipt_callback: fn(Frame) -> (), 
   error_callback: fn(Frame) -> ()
 }
 
 impl Session {
-  pub fn new(conn: Connection) -> Session {
+  pub fn new(connection: Connection) -> Session {
     Session {
       next_transaction_id: 0,
       next_subscription_id: 0,
       next_receipt_id: 0,
       subscriptions: HashMap::with_capacity(1),
-      connection: conn,
+      outstanding_receipts: HashMap::new(),
+      connection: connection,
+      receipt_callback: Session::default_receipt_callback,
       error_callback: Session::default_error_callback
     }
   }
  
   fn default_error_callback(frame : Frame) {
-    debug!("ERROR frame received:\n{}", frame);
+    error!("ERROR received:\n{}", frame);
+  }
+  
+  fn default_receipt_callback(frame : Frame) {
+    info!("RECEIPT received:\n{}", frame);
   }
 
   pub fn on_error(&mut self, callback: fn(Frame)) {
     self.error_callback = callback;
+  }
+
+  fn handle_receipt(&mut self, frame: Frame) {
+    match frame.headers.get_receipt_id() {
+      Some(ReceiptId(ref receipt_id)) => {
+        match self.outstanding_receipts.pop_equiv(receipt_id) {
+          Some(Outstanding) => {
+            debug!("Removed ReceiptId '{}' from pending receipts.", *receipt_id)
+          },
+          None => {
+            fail!("Received unexpected RECEIPT '{}'", *receipt_id)
+          }
+        }
+      },
+      None => fail!("Received RECEIPT frame without a receipt-id")
+    };
+    (self.receipt_callback)(frame);
+  }
+
+  pub fn on_receipt(&mut self, callback: fn(Frame)) {
+     self.receipt_callback = callback;
+  }
+
+  pub fn outstanding_receipts(&self) -> Vec<&str> {
+    self.outstanding_receipts.keys().map(|key| key.as_slice()).collect()
   }
 
   fn generate_transaction_id(&mut self) -> uint {
@@ -61,7 +96,7 @@ impl Session {
 
   fn generate_receipt_id(&mut self) -> uint {
     let id = self.next_receipt_id;
-    self.next_subscription_id += 1;
+    self.next_receipt_id += 1;
     id
   }
 
@@ -74,13 +109,19 @@ impl Session {
     self.send(send_frame)
   }
 
+  pub fn send_text_with_receipt(&mut self, topic: &str, body: &str) -> IoResult<()> {
+    Ok(try!(self.send_bytes_with_receipt(topic, "text/plain", body.as_bytes())))
+  }
+
   pub fn send_bytes_with_receipt(&mut self, topic: &str, mime_type: &str, body: &[u8]) -> IoResult<()> {
     let mut send_frame = Frame::send(topic, mime_type, body);
     let receipt_id = format!("message/{}", self.generate_receipt_id().to_string());
     send_frame.headers.push(
       Header::from_key_value("receipt", receipt_id.as_slice())
     );
-    Ok(try!(send_frame.write(&mut self.connection.writer)))
+    try!(send_frame.write(&mut self.connection.writer));
+    self.outstanding_receipts.insert(receipt_id, Outstanding);
+    Ok(())
   }
 
   pub fn subscribe(&mut self, topic: &str, ack_mode: AckMode, callback: fn(Frame)->AckOrNack)-> IoResult<String> {
@@ -96,7 +137,7 @@ impl Session {
   }
 
   pub fn unsubscribe(&mut self, sub_id: &str) -> IoResult<()> {
-     let sub = self.subscriptions.pop_equiv(&sub_id);
+     let _ = self.subscriptions.pop_equiv(&sub_id);
      let unsubscribe_frame = Frame::unsubscribe(sub_id.as_slice());
      self.send(unsubscribe_frame)
   }
@@ -112,7 +153,7 @@ impl Session {
     Ok(tx)
   }
 
-  pub fn receive(&mut self) -> IoResult<Frame> {
+  pub fn receive_frame(&mut self) -> IoResult<Frame> {
     Ok(try!(Frame::read(&mut self.connection.reader)))
   }
 
@@ -125,10 +166,7 @@ impl Session {
     // Check for ERROR frame
     match frame.command.as_slice() {
        "ERROR" => return (self.error_callback)(frame),
-       "RECEIPT" => {
-          debug!("RECEIPT received:\n{}", frame);
-          return;
-        }
+       "RECEIPT" => return self.handle_receipt(frame),
         _ => {} // No operation
     };
 
@@ -190,17 +228,15 @@ impl Session {
     }
   } 
 
+  pub fn receive(&mut self) -> IoResult<()>{
+    let frame = try!(self.receive_frame());
+    debug!("Received '{}' frame, dispatching.", frame.command);
+    Ok(self.dispatch(frame))
+  }
+
   pub fn listen(&mut self) {
     loop {
-      let frame = match self.receive() {
-        Ok(f) => f,
-        Err(e) => {
-          debug!("Error receiving frame: {}", e);
-          continue;
-        }
-      };
-      debug!("Received message, dispatching.");
-      self.dispatch(frame);
+      let _ = self.receive(); // TODO: Make match with possible failure
     }
   }      
 }
