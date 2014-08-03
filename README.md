@@ -4,8 +4,6 @@ stomp-rs ![Travis CI Build Status](https://api.travis-ci.org/zslayton/stomp-rs.p
 
 `stomp-rs` is in an alpha state and should not be used in production code.
 
-![Travis CI Build Status](https://api.travis-ci.org/zslayton/stomp-rs.png?branch=master)
-
 ## Examples
 ### Connect / Subscribe / Send
 ```rust
