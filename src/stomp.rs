@@ -16,6 +16,11 @@ pub fn connect(ip_address: &str, port: u16) -> IoResult<Session> {
   connection.start_session()
 }
 
+pub fn connect_with_credentials(ip_address: &str, port: u16, login: &str, passcode: &str) -> IoResult<Session> {
+  let connection = try!(Connection::new(ip_address, port));
+  connection.start_session_with_credentials(login, passcode)
+}
+
 pub mod connection;
 pub mod frame;
 pub mod headers;
