@@ -6,7 +6,7 @@ use std::io::InvalidInput;
 use std::str::from_utf8;
 use frame::Frame;
 use session::Session;
-use headers::Header;
+use header::Header;
 
 pub struct Connection {
   pub ip_address : String,
@@ -49,10 +49,10 @@ impl Connection {
   pub fn start_session_with_credentials(mut self, login: &str, passcode: &str) -> IoResult<Session> {
     let mut connect_frame = Frame::connect();
     connect_frame.headers.push(
-      Header::from_key_value("login", login)
+      Header::encode_key_value("login", login)
     );
     connect_frame.headers.push(
-      Header::from_key_value("passcode", passcode)
+      Header::encode_key_value("passcode", passcode)
     );
     let _ = try!(connect_frame.write(&mut self.writer));
     let frame = try!(self.read_connected_frame());

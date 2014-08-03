@@ -1,6 +1,6 @@
 use frame::Frame;
 use std::io::IoResult;
-use headers::Header;
+use header::Header;
 use session::Session;
 
 pub struct Transaction<'a> {
@@ -19,7 +19,7 @@ impl <'a> Transaction<'a> {
   pub fn send_bytes(&mut self, topic: &str, mime_type: &str, body: &[u8]) -> IoResult<()> {
     let mut send_frame = Frame::send(topic, mime_type, body);
     send_frame.headers.push(
-      Header::from_key_value("transaction", self.id.as_slice())
+      Header::encode_key_value("transaction", self.id.as_slice())
     );
     Ok(try!(send_frame.write(&mut self.session.connection.writer)))
   }

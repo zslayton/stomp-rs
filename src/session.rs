@@ -7,11 +7,11 @@ use subscription::Auto;
 use subscription::AckOrNack;
 use subscription::Client;
 use subscription::ClientIndividual;
-use headers::Header;
-use headers::Subscription;
-use headers::Ack;
-use headers::ReceiptId;
-use headers::StompHeaderSet;
+use header::Header;
+use header::Subscription;
+use header::Ack;
+use header::ReceiptId;
+use header::StompHeaderSet;
 use transaction::Transaction;
 
 //TODO: Replace the HashMap<String, ReceiptStatus> with a Set when
@@ -117,7 +117,7 @@ impl Session {
     let mut send_frame = Frame::send(topic, mime_type, body);
     let receipt_id = format!("message/{}", self.generate_receipt_id().to_string());
     send_frame.headers.push(
-      Header::from_key_value("receipt", receipt_id.as_slice())
+      Header::encode_key_value("receipt", receipt_id.as_slice())
     );
     try!(send_frame.write(&mut self.connection.writer));
     self.outstanding_receipts.insert(receipt_id, Outstanding);

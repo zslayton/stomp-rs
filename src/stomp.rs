@@ -23,7 +23,7 @@ pub fn connect_with_credentials(ip_address: &str, port: u16, login: &str, passco
 
 pub mod connection;
 pub mod frame;
-pub mod headers;
+pub mod header;
 pub mod session;
 pub mod subscription;
 pub mod transaction;
