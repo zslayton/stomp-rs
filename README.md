@@ -1,9 +1,8 @@
-stomp-rs
+stomp-rs ![Travis CI Build Status](https://api.travis-ci.org/zslayton/stomp-rs.png?branch=master)
 =====
 `stomp-rs` aspires to provide a full [STOMP](http://stomp.github.io/stomp-specification-1.2.html) 1.2 client implementation for the [Rust programming language](http://www.rust-lang.org/). This allows programs written in Rust to interact with message queueing services like [ActiveMQ](http://activemq.apache.org/) and [RabbitMQ](http://www.rabbitmq.com/).
 
 `stomp-rs` is in an alpha state and should not be used in production code.
-
 
 ## Examples
 ### Connect / Subscribe / Send
@@ -49,6 +48,22 @@ fn main() {
   tx.send_text(topic, "Mineral");
 
   tx.commit(); // Or tx.abort();
+```
+
+### Receipts
+```rust
+  session.send_text_with_receipt(topic, "Modern Major General");
+  debug!("Oustanding Receipt IDs: {}", session.oustanding_receipts()); // A Vec<&str> of Receipt IDs
+```
+
+### Handling RECEIPT frames
+```rust
+  fn on_receipt(frame: Frame) {
+    debug!("RECEIPT frame received:\n{}", frame);
+  }
+
+  session.on_receipt(on_receipt);
+  session.send_text_with_receipt(topic, "Modern Major General");
 ```
 
 ### Handling ERROR frames
