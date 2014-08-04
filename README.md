@@ -2,7 +2,7 @@ stomp-rs ![Travis CI Build Status](https://api.travis-ci.org/zslayton/stomp-rs.p
 =====
 `stomp-rs` aspires to provide a full [STOMP](http://stomp.github.io/stomp-specification-1.2.html) 1.2 client implementation for the [Rust programming language](http://www.rust-lang.org/). This allows programs written in Rust to interact with message queueing services like [ActiveMQ](http://activemq.apache.org/) and [RabbitMQ](http://www.rabbitmq.com/).
 
-`stomp-rs` is in an alpha state and should not be used in production code.
+The APIs for `stomp-rs` are not yet stable and are likely to fluctuate before v1.0.
 
 ## Examples
 ### Connect / Subscribe / Send
