@@ -4,11 +4,8 @@ stomp-rs ![Travis CI Build Status](https://api.travis-ci.org/zslayton/stomp-rs.p
 
 - [x] Connect
 - [x] Subscribe
-- [x] Subscribe
 - [x] Send
-- [x] Auto Acknowledge
-- [x] Client Acknowledge
-- [x] ClientIndividual Acknowledge
+- [x] Acknowledge (Auto/Client/ClientIndividual)
 - [x] Transactions
 - [x] Receipts
 - [x] Disconnect
