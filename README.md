@@ -10,10 +10,9 @@ stomp-rs ![Travis CI Build Status](https://api.travis-ci.org/zslayton/stomp-rs.p
 - [x] Client Acknowledge
 - [x] ClientIndividual Acknowledge
 - [x] Transactions
-- [x] SEND Receipts
+- [x] Receipts
 - [x] Disconnect
 - [ ] Heartbeats
-- [ ] Receipts for non-SEND frames
 
 The APIs for `stomp-rs` are not yet stable and are likely to fluctuate before v1.0.
 
