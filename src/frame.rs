@@ -77,7 +77,8 @@ impl Frame {
     // This may be suboptimal, but fine for now
     let chomped_length : uint;
     {
-      let trimmed_line : &str = line.as_slice().trim_right_chars(&['\r', '\n']);
+      let chars_to_remove : &[char] = &['\r', '\n'];
+      let trimmed_line : &str = line.as_slice().trim_right_chars(chars_to_remove);
       chomped_length = trimmed_line.len();
     }
     line.truncate(chomped_length);
