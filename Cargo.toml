@@ -4,6 +4,6 @@ name = "stomp"
 version = "0.1.1"
 authors = [ "zslayton" ]
 
-[[lib]]
+[lib]
 
 name = "stomp"
