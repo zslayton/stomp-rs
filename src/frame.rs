@@ -43,18 +43,18 @@ impl Frame {
   pub fn to_str(&self) -> String {
     let space_required = self.character_count();
     let mut frame_string = String::with_capacity(space_required);
-    frame_string = frame_string.append(self.command.as_slice());
-    frame_string = frame_string.append("\n");
+    frame_string.push_str(self.command.as_slice());
+    frame_string.push_str("\n");
     for header in self.headers.iter() {
-      frame_string = frame_string.append(header.get_raw());
-      frame_string = frame_string.append("\n");
+      frame_string.push_str(header.get_raw());
+      frame_string.push_str("\n");
     }
-    frame_string = frame_string.append("\n");
+    frame_string.push_str("\n");
     let body_string : &str = match from_utf8(self.body.as_slice()) {
       Some(ref s) => *s,
       None => "<Binary content>" // Space is wasted in this case. Could shrink to fit?
     };
-    frame_string = frame_string.append(body_string);
+    frame_string.push_str(body_string);
     frame_string
   }
 
@@ -201,7 +201,7 @@ impl Frame {
     let send_frame = Frame {
       command : "SEND".to_string(),
       headers : header_list,
-      body : Vec::from_slice(body)
+      body : body.to_vec()
     };
     send_frame
   }
