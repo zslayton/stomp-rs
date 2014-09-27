@@ -5,11 +5,13 @@ use connection::Connection;
 use subscription::AckMode;
 use subscription::Auto;
 use subscription::AckOrNack;
+use subscription::Ack;
+use subscription::Nack;
 use subscription::Client;
 use subscription::ClientIndividual;
+use subscription::Subscription;
+use header;
 use header::Header;
-use header::Subscription;
-use header::Ack;
 use header::ReceiptId;
 use header::StompHeaderSet;
 use transaction::Transaction;
@@ -24,11 +26,11 @@ pub struct Session {
   next_transaction_id: uint,
   next_subscription_id: uint,
   next_receipt_id: uint,
-  subscriptions: HashMap<String, ::subscription::Subscription>,
+  subscriptions: HashMap<String, Subscription>,
   outstanding_receipts: HashMap<String, ReceiptStatus>, 
   pub connection : Connection,
-  receipt_callback: fn(Frame) -> (), 
-  error_callback: fn(Frame) -> ()
+  receipt_callback: fn(&Frame) -> (), 
+  error_callback: fn(&Frame) -> ()
 }
 
 impl Session {
@@ -45,15 +47,15 @@ impl Session {
     }
   }
  
-  fn default_error_callback(frame : Frame) {
+  fn default_error_callback(frame : &Frame) {
     error!("ERROR received:\n{}", frame);
   }
   
-  fn default_receipt_callback(frame : Frame) {
+  fn default_receipt_callback(frame : &Frame) {
     info!("RECEIPT received:\n{}", frame);
   }
 
-  pub fn on_error(&mut self, callback: fn(Frame)) {
+  pub fn on_error(&mut self, callback: fn(&Frame)) {
     self.error_callback = callback;
   }
 
@@ -71,10 +73,10 @@ impl Session {
       },
       None => fail!("Received RECEIPT frame without a receipt-id")
     };
-    (self.receipt_callback)(frame);
+    (self.receipt_callback)(&frame);
   }
 
-  pub fn on_receipt(&mut self, callback: fn(Frame)) {
+  pub fn on_receipt(&mut self, callback: fn(&Frame)) {
      self.receipt_callback = callback;
   }
 
@@ -124,9 +126,9 @@ impl Session {
     Ok(())
   }
 
-  pub fn subscribe(&mut self, topic: &str, ack_mode: AckMode, callback: fn(Frame)->AckOrNack)-> IoResult<String> {
+  pub fn subscribe(&mut self, topic: &str, ack_mode: AckMode, callback: fn(&Frame)->AckOrNack)-> IoResult<String> {
     let next_id = self.generate_subscription_id();
-    let sub = ::subscription::Subscription::new(next_id, topic, ack_mode, callback);
+    let sub = Subscription::new(next_id, topic, ack_mode, callback);
     let subscribe_frame = Frame::subscribe(sub.id.as_slice(), sub.topic.as_slice(), ack_mode);
     debug!("Sending frame:\n{}", subscribe_frame);
     try!(subscribe_frame.write(&mut self.connection.writer));
@@ -165,68 +167,57 @@ impl Session {
   pub fn dispatch(&mut self, frame: Frame) -> () {
     // Check for ERROR frame
     match frame.command.as_slice() {
-       "ERROR" => return (self.error_callback)(frame),
+       "ERROR" => return (self.error_callback)(&frame),
        "RECEIPT" => return self.handle_receipt(frame),
         _ => {} // No operation
     };
+ 
+    let ack_mode : AckMode;
+    let callback : fn(&Frame) -> AckOrNack;
+    { // This extra scope is required to free up `frame` and `subscription`
+      // following a borrow.
+      let header::Subscription(sub_id) = 
+        frame.headers
+        .get_subscription()
+        .expect("Frame did not contain a subscription header.");
 
-    let sub : &::subscription::Subscription;
-    let sub_id = match frame.headers.get_subscription() {
-      Some(Subscription(ref s)) => s.to_string(),
-      None => { 
-        debug!("Error: frame did not contain a subscription header.");
-        debug!("Frame: {}", frame);
-        return;
-      }
-    };
-    sub = match self.subscriptions.find_equiv(&sub_id.as_slice()) {
-      Some(sub) => sub,
-      None => {
-        debug!("Error: Received message for unknown subscription: {}", sub_id);
-        return;
-      }
-    };
+      let (a, c) = 
+         self.subscriptions
+         .find_equiv(&sub_id)
+         .map(|sub| (sub.ack_mode, sub.callback))
+         .expect("Received a message for an unknown subscription.");
+      ack_mode = a;
+      callback = c;
+    }
+
     debug!("Executing.");
-    match sub.ack_mode {
+    let callback_result : AckOrNack = (callback)(&frame);
+    match ack_mode {
       Auto => {
         debug!("Auto ack, no frame sent.");
-        let _ = (sub.callback)(frame);
       }
       Client | ClientIndividual => {
-        let ack_id = match frame.headers.get_ack() {
-          Some(Ack(ack_id)) => ack_id.to_string(),
-          _ => {
-            debug!("Error: Message did not have an ack header.");
-            return;
-          }
-        };
-        match (sub.callback)(frame) {
-          ::subscription::Ack => {
-            let ack_frame = Frame::ack(ack_id.as_slice());
-            //match self.send(ack_frame) {
-            match ack_frame.write(&mut self.connection.writer) {
-              Err(error) => {
-                debug!("Couldn't send ACK: {}", error);
-                return;
-              },
-              _ => debug!("ACK sent.")
-            }
-          },
-          ::subscription::Nack => {
-            let nack_frame = Frame::nack(ack_id.as_slice());
-            //match self.send(nack_frame) {
-            match nack_frame.write(&mut self.connection.writer) {
-              Err(error) => {
-                debug!("Couldn't send NACK: {}", error);
-                return;
-              },
-              _ => debug!("NACK sent.")
-            }
-          } // Nack
-        } // match
+        let header::Ack(ack_id) = 
+          frame.headers
+          .get_ack()
+          .expect("Message did not have an 'ack' header.");
+        match callback_result {
+          Ack =>  self.acknowledge_frame(ack_id),
+          Nack => self.negatively_acknowledge_frame(ack_id)
+        }.unwrap_or_else(|error|fail!(format!("Could not acknowledge frame: {}", error)));
       } // Client | ...
     }
   } 
+
+  fn acknowledge_frame(&mut self, ack_id: &str) -> IoResult<()> {
+    let ack_frame = Frame::ack(ack_id);
+    self.send(ack_frame)
+  }
+
+  fn negatively_acknowledge_frame(&mut self, ack_id: &str) -> IoResult<()>{
+    let nack_frame = Frame::nack(ack_id);
+    self.send(nack_frame)
+  }
 
   pub fn receive(&mut self) -> IoResult<()>{
     let frame = try!(self.receive_frame());

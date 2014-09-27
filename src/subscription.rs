@@ -25,11 +25,11 @@ pub struct Subscription {
   pub id : String,
   pub topic: String,
   pub ack_mode: AckMode,
-  pub callback: fn(Frame)-> AckOrNack
+  pub callback: fn(&Frame)-> AckOrNack
 }
 
 impl Subscription {
-  pub fn new(id: uint, topic: &str, ack_mode: AckMode, callback: fn(Frame)->AckOrNack) -> Subscription {
+  pub fn new(id: uint, topic: &str, ack_mode: AckMode, callback: fn(&Frame)->AckOrNack) -> Subscription {
     Subscription {
       id: format!("stomp-rs/{}",id),
       topic: topic.to_string(),
