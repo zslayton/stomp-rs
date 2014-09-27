@@ -26,7 +26,7 @@ fn main() {
     Err(error) => fail!("Could not connect to the server: {}", error)
   };
   
-  fn on_message(frame: Frame) -> AckOrNack {
+  fn on_message(frame: &Frame) -> AckOrNack {
     println!("Received a message:\n{}", frame);
     Ack
   }
@@ -67,7 +67,7 @@ fn main() {
 
 ### Handling RECEIPT frames
 ```rust
-  fn on_receipt(frame: Frame) {
+  fn on_receipt(frame: &Frame) {
     debug!("RECEIPT frame received:\n{}", frame);
   }
 
@@ -77,7 +77,7 @@ fn main() {
 
 ### Handling ERROR frames
 ```rust
-  fn on_error(frame: Frame) {
+  fn on_error(frame: &Frame) {
     fail!("ERROR frame received:\n{}", frame);
   }
 
