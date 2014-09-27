@@ -26,7 +26,7 @@ fn main() {
     Err(error) => fail!("Could not connect to the server: {}", error)
   };
   
-  fn on_message(frame: Frame) -> AckOrNack {
+  fn on_message(frame: &Frame) -> AckOrNack {
     println!("Received a message:\n{}", frame);
     Ack
   }
