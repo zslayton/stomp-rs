@@ -19,6 +19,11 @@ pub struct Frame {
   pub body : Vec<u8>
 }
 
+pub enum Transmission {
+  Heartbeat,
+  CompleteFrame(Frame)
+}
+
 impl Show for Frame {
     fn fmt(&self, f: &mut Formatter) -> Result {
         write!(f, "{}", self.to_str())
@@ -85,15 +90,14 @@ impl Frame {
     line
   }
 
-  pub fn read<R: Reader>(stream: &mut BufferedReader<R>) -> IoResult<Frame> {
+  pub fn read<R: Reader>(stream: &mut BufferedReader<R>) -> IoResult<Transmission> {
     let mut line : String;
-    // Consume any number of empty preceding lines
-    loop {
-      line = Frame::chomp_line(try!(stream.read_line()));
-      if line.len() > 0 {
-        break;
-      }
+    // Empty lines are interpreted as heartbeats 
+    line = Frame::chomp_line(try!(stream.read_line()));
+    if line.len() == 0 {
+      return Ok(Heartbeat);
     }
+
     let command : String = line;
 
     let mut header_list : HeaderList = HeaderList::with_capacity(6);
@@ -120,12 +124,13 @@ impl Frame {
         body = try!(stream.read_until(0 as u8));
       }
     }
-    Ok(Frame{command: command, headers: header_list, body:body}) 
+    Ok(CompleteFrame(Frame{command: command, headers: header_list, body:body}))
   }
 
   pub fn connect() -> Frame {
     let mut header_list : HeaderList = HeaderList::with_capacity(2);
     header_list.push(Header::encode_key_value("accept-version","1.2"));
+    header_list.push(Header::encode_key_value("heart-beat","2000,1000"));
     header_list.push(Header::encode_key_value("content-length","0"));
     let connect_frame = Frame {
        command : "CONNECT".to_string(),

@@ -108,7 +108,7 @@ impl Session {
  
   pub fn send_bytes(&mut self, topic: &str, mime_type: &str, body: &[u8]) -> IoResult<()> {
     let send_frame = Frame::send(topic, mime_type, body);
-    self.send(send_frame)
+    Ok(self.send(send_frame))
   }
 
   pub fn send_text_with_receipt(&mut self, topic: &str, body: &str) -> IoResult<()> {
@@ -121,7 +121,8 @@ impl Session {
     send_frame.headers.push(
       Header::encode_key_value("receipt", receipt_id.as_slice())
     );
-    try!(send_frame.write(&mut self.connection.writer));
+    //try!(send_frame.write(&mut self.connection.sender));
+    self.send(send_frame);
     self.outstanding_receipts.insert(receipt_id, Outstanding);
     Ok(())
   }
@@ -131,7 +132,8 @@ impl Session {
     let sub = Subscription::new(next_id, topic, ack_mode, callback);
     let subscribe_frame = Frame::subscribe(sub.id.as_slice(), sub.topic.as_slice(), ack_mode);
     debug!("Sending frame:\n{}", subscribe_frame);
-    try!(subscribe_frame.write(&mut self.connection.writer));
+    self.send(subscribe_frame);
+    //try!(subscribe_frame.write(&mut self.connection.sender));
     debug!("Registering callback for subscription id: {}", sub.id);
     let id_to_return = sub.id.to_string();
     self.subscriptions.insert(sub.id.to_string(), sub);
@@ -141,12 +143,12 @@ impl Session {
   pub fn unsubscribe(&mut self, sub_id: &str) -> IoResult<()> {
      let _ = self.subscriptions.pop_equiv(&sub_id);
      let unsubscribe_frame = Frame::unsubscribe(sub_id.as_slice());
-     self.send(unsubscribe_frame)
+     Ok(self.send(unsubscribe_frame))
   }
 
   pub fn disconnect(&mut self) -> IoResult<()> {
     let disconnect_frame = Frame::disconnect();
-    self.send(disconnect_frame)
+    Ok(self.send(disconnect_frame))
   }
 
   pub fn begin_transaction<'a>(&'a mut self) -> IoResult<Transaction<'a>> {
@@ -156,12 +158,11 @@ impl Session {
   }
 
   pub fn receive_frame(&mut self) -> IoResult<Frame> {
-    Ok(try!(Frame::read(&mut self.connection.reader)))
+    Ok(self.connection.receive())
   }
 
-  pub fn send(&mut self, frame: Frame) -> IoResult<()> {
-    let _ = try!(frame.write(&mut self.connection.writer));
-    Ok(())
+  pub fn send(&mut self, frame: Frame) {
+    self.connection.send(frame);
   }
 
   pub fn dispatch(&mut self, frame: Frame) -> () {
@@ -211,12 +212,12 @@ impl Session {
 
   fn acknowledge_frame(&mut self, ack_id: &str) -> IoResult<()> {
     let ack_frame = Frame::ack(ack_id);
-    self.send(ack_frame)
+    Ok(self.send(ack_frame))
   }
 
   fn negatively_acknowledge_frame(&mut self, ack_id: &str) -> IoResult<()>{
     let nack_frame = Frame::nack(ack_id);
-    self.send(nack_frame)
+    Ok(self.send(nack_frame))
   }
 
   pub fn receive(&mut self) -> IoResult<()>{
