@@ -127,10 +127,10 @@ impl Frame {
     Ok(CompleteFrame(Frame{command: command, headers: header_list, body:body}))
   }
 
-  pub fn connect() -> Frame {
+  pub fn connect(tx_heartbeat_ms: uint, rx_heartbeat_ms: uint) -> Frame {
     let mut header_list : HeaderList = HeaderList::with_capacity(2);
     header_list.push(Header::encode_key_value("accept-version","1.2"));
-    header_list.push(Header::encode_key_value("heart-beat","2000,1000"));
+    header_list.push(Header::encode_key_value("heart-beat",format!("{},{}", tx_heartbeat_ms, rx_heartbeat_ms).as_slice()));
     header_list.push(Header::encode_key_value("content-length","0"));
     let connect_frame = Frame {
        command : "CONNECT".to_string(),
