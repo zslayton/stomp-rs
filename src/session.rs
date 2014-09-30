@@ -1,6 +1,9 @@
 use std::collections::hashmap::HashMap;
+use std::time::Duration;
+use std::io::BufferedReader;
+use std::io::Timer;
 use std::io::IoResult;
-use frame::Frame;
+use std::io::net::tcp::TcpStream;
 use connection::Connection;
 use subscription::AckMode;
 use subscription::Auto;
@@ -10,6 +13,10 @@ use subscription::Nack;
 use subscription::Client;
 use subscription::ClientIndividual;
 use subscription::Subscription;
+use frame::Frame;
+use frame::Transmission;
+use frame::Heartbeat;
+use frame::CompleteFrame;
 use header;
 use header::Header;
 use header::ReceiptId;
@@ -23,30 +30,125 @@ enum ReceiptStatus {
 }
 
 pub struct Session {
+  pub connection : Connection,
+  sender: Sender<Frame>,
+  receiver: Receiver<Frame>,
   next_transaction_id: uint,
   next_subscription_id: uint,
   next_receipt_id: uint,
   subscriptions: HashMap<String, Subscription>,
   outstanding_receipts: HashMap<String, ReceiptStatus>, 
-  pub connection : Connection,
   receipt_callback: fn(&Frame) -> (), 
   error_callback: fn(&Frame) -> ()
 }
 
+pub static grace_period_multiplier : f64 = 2.0f64;
+
 impl Session {
-  pub fn new(connection: Connection) -> Session {
+  pub fn new(connection: Connection, tx_heartbeat_ms: uint, rx_heartbeat_ms: uint) -> Session {
+    let reading_stream = connection.tcp_stream.clone();
+    let writing_stream = reading_stream.clone();
+    let (sender_tx, sender_rx) : (Sender<Frame>, Receiver<Frame>) = channel();
+    let (receiver_tx, receiver_rx) : (Sender<Frame>, Receiver<Frame>) = channel();
+
+    let modified_rx_heartbeat_ms : uint = ((rx_heartbeat_ms as f64) * grace_period_multiplier) as uint;
+    
+    spawn(proc(){
+      match modified_rx_heartbeat_ms {
+        0 => Session::receive_loop(receiver_tx, reading_stream),
+        _ => Session::receive_loop_with_heartbeat(receiver_tx, reading_stream, Duration::milliseconds(modified_rx_heartbeat_ms as i64))
+      } 
+    });
+    spawn(proc(){
+      match tx_heartbeat_ms {
+        0 => Session::send_loop(sender_rx, writing_stream),
+        _ => Session::send_loop_with_heartbeat(sender_rx, writing_stream, Duration::milliseconds(tx_heartbeat_ms as i64))
+      } 
+    });
+
     Session {
+      connection: connection,
+      sender : sender_tx,
+      receiver : receiver_rx,
       next_transaction_id: 0,
       next_subscription_id: 0,
       next_receipt_id: 0,
       subscriptions: HashMap::with_capacity(1),
       outstanding_receipts: HashMap::new(),
-      connection: connection,
       receipt_callback: Session::default_receipt_callback,
       error_callback: Session::default_error_callback
     }
   }
  
+ fn send_loop(frames_to_send: Receiver<Frame>, mut tcp_stream: TcpStream){
+    loop {
+      let frame_to_send = frames_to_send.recv();
+      frame_to_send.write(&mut tcp_stream).ok().expect("Couldn't send message!");
+    }
+  }
+
+  fn send_loop_with_heartbeat(frames_to_send: Receiver<Frame>, mut tcp_stream: TcpStream, heartbeat: Duration){
+    let mut timer = Timer::new().unwrap(); 
+    loop {
+      let timeout = timer.oneshot(heartbeat);
+      select! {
+        () = timeout.recv() => {
+          debug!("Sending heartbeat...");
+          tcp_stream.write_char('\n').ok().expect("Failed to send heartbeat.");
+      },
+        frame_to_send = frames_to_send.recv() => {
+          frame_to_send.write(&mut tcp_stream).ok().expect("Couldn't send message!");
+        }
+      }
+    }
+  }
+
+   fn receive_loop(frame_recipient: Sender<Frame>, tcp_stream: TcpStream){
+    let (trans_tx, trans_rx) : (Sender<Transmission>, Receiver<Transmission>) = channel();
+    spawn(proc(){
+      Session::read_loop(trans_tx, tcp_stream); 
+    });
+    loop {
+      match trans_rx.recv() {
+        Heartbeat => debug!("Received heartbeat"),
+        CompleteFrame(frame) => frame_recipient.send(frame)
+      }
+    }
+  }
+ 
+
+  fn receive_loop_with_heartbeat(frame_recipient: Sender<Frame>, tcp_stream: TcpStream, heartbeat: Duration){
+    let (trans_tx, trans_rx) : (Sender<Transmission>, Receiver<Transmission>) = channel();
+    spawn(proc(){
+      Session::read_loop(trans_tx, tcp_stream); 
+    });
+
+
+    let mut timer = Timer::new().unwrap(); 
+    loop {
+      let timeout = timer.oneshot(heartbeat);
+      select! {
+        () = timeout.recv() => error!("Did not receive expected heartbeat!"),
+        transmission = trans_rx.recv() => {
+          match transmission {
+            Heartbeat => debug!("Received heartbeat"),
+            CompleteFrame(frame) => frame_recipient.send(frame)
+          }
+        }
+      }
+    }
+  }
+
+  fn read_loop(transmission_listener: Sender<Transmission>, tcp_stream: TcpStream){
+    let mut reader : BufferedReader<TcpStream> = BufferedReader::new(tcp_stream);
+    loop {
+      match Frame::read(&mut reader){
+         Ok(transmission) => transmission_listener.send(transmission),
+         Err(error) => fail!("Couldn't read from server!: {}", error)
+      }
+    }
+  }
+
   fn default_error_callback(frame : &Frame) {
     error!("ERROR received:\n{}", frame);
   }
@@ -157,15 +259,15 @@ impl Session {
     Ok(tx)
   }
 
-  pub fn receive_frame(&mut self) -> IoResult<Frame> {
-    Ok(self.connection.receive())
+  pub fn send(&self, frame: Frame) {
+    self.sender.send(frame);
   }
 
-  pub fn send(&mut self, frame: Frame) {
-    self.connection.send(frame);
+  pub fn receive(&self) -> Frame {
+    self.receiver.recv()
   }
 
-  pub fn dispatch(&mut self, frame: Frame) -> () {
+  pub fn dispatch(&mut self, frame: Frame) {
     // Check for ERROR frame
     match frame.command.as_slice() {
        "ERROR" => return (self.error_callback)(&frame),
@@ -220,15 +322,11 @@ impl Session {
     Ok(self.send(nack_frame))
   }
 
-  pub fn receive(&mut self) -> IoResult<()>{
-    let frame = try!(self.receive_frame());
-    debug!("Received '{}' frame, dispatching.", frame.command);
-    Ok(self.dispatch(frame))
-  }
-
   pub fn listen(&mut self) {
     loop {
-      let _ = self.receive(); // TODO: Make match with possible failure
+      let frame = self.receive();
+      debug!("Received '{}' frame, dispatching.", frame.command);
+      self.dispatch(frame)
     }
   }      
 }
