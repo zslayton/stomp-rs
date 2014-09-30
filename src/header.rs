@@ -113,7 +113,7 @@ pub struct Ack<'a>(pub &'a str);
 pub struct ContentLength(pub uint);
 pub struct Custom(pub Header);
 pub struct Destination<'a> (pub &'a str);
-pub struct HeartBeat(pub uint, uint);
+pub struct HeartBeat(pub uint, pub uint);
 pub struct Host<'a>(pub &'a str);
 pub struct Id<'a>(pub &'a str);
 pub struct Login<'a>(pub &'a str);
