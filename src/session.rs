@@ -1,6 +1,10 @@
 use std::collections::hashmap::HashMap;
+use std::time::Duration;
+use std::io::BufferedReader;
+use std::io::BufferedWriter;
+use std::io::Timer;
 use std::io::IoResult;
-use frame::Frame;
+use std::io::net::tcp::TcpStream;
 use connection::Connection;
 use subscription::AckMode;
 use subscription::Auto;
@@ -10,6 +14,10 @@ use subscription::Nack;
 use subscription::Client;
 use subscription::ClientIndividual;
 use subscription::Subscription;
+use frame::Frame;
+use frame::Transmission;
+use frame::HeartBeat;
+use frame::CompleteFrame;
 use header;
 use header::Header;
 use header::ReceiptId;
@@ -23,30 +31,128 @@ enum ReceiptStatus {
 }
 
 pub struct Session {
+  pub connection : Connection,
+  sender: Sender<Frame>,
+  receiver: Receiver<Frame>,
   next_transaction_id: uint,
   next_subscription_id: uint,
   next_receipt_id: uint,
   subscriptions: HashMap<String, Subscription>,
   outstanding_receipts: HashMap<String, ReceiptStatus>, 
-  pub connection : Connection,
   receipt_callback: fn(&Frame) -> (), 
   error_callback: fn(&Frame) -> ()
 }
 
+pub static grace_period_multiplier : f64 = 2.0f64;
+
 impl Session {
-  pub fn new(connection: Connection) -> Session {
+  pub fn new(connection: Connection, tx_heartbeat_ms: uint, rx_heartbeat_ms: uint) -> Session {
+    let reading_stream = connection.tcp_stream.clone();
+    let writing_stream = reading_stream.clone();
+    let (sender_tx, sender_rx) : (Sender<Frame>, Receiver<Frame>) = channel();
+    let (receiver_tx, receiver_rx) : (Sender<Frame>, Receiver<Frame>) = channel();
+
+    let modified_rx_heartbeat_ms : uint = ((rx_heartbeat_ms as f64) * grace_period_multiplier) as uint;
+    
+    spawn(proc(){
+      match modified_rx_heartbeat_ms {
+        0 => Session::receive_loop(receiver_tx, reading_stream),
+        _ => Session::receive_loop_with_heartbeat(receiver_tx, reading_stream, Duration::milliseconds(modified_rx_heartbeat_ms as i64))
+      } 
+    });
+    spawn(proc(){
+      match tx_heartbeat_ms {
+        0 => Session::send_loop(sender_rx, writing_stream),
+        _ => Session::send_loop_with_heartbeat(sender_rx, writing_stream, Duration::milliseconds(tx_heartbeat_ms as i64))
+      } 
+    });
+
     Session {
+      connection: connection,
+      sender : sender_tx,
+      receiver : receiver_rx,
       next_transaction_id: 0,
       next_subscription_id: 0,
       next_receipt_id: 0,
       subscriptions: HashMap::with_capacity(1),
       outstanding_receipts: HashMap::new(),
-      connection: connection,
       receipt_callback: Session::default_receipt_callback,
       error_callback: Session::default_error_callback
     }
   }
  
+ fn send_loop(frames_to_send: Receiver<Frame>, tcp_stream: TcpStream){
+    let mut writer : BufferedWriter<TcpStream> = BufferedWriter::new(tcp_stream);
+    loop {
+      let frame_to_send = frames_to_send.recv();
+      frame_to_send.write(&mut writer).ok().expect("Couldn't send message!");
+    }
+  }
+
+  fn send_loop_with_heartbeat(frames_to_send: Receiver<Frame>, tcp_stream: TcpStream, heartbeat: Duration){
+    let mut writer : BufferedWriter<TcpStream> = BufferedWriter::new(tcp_stream);
+    let mut timer = Timer::new().unwrap(); 
+    loop {
+      let timeout = timer.oneshot(heartbeat);
+      select! {
+        () = timeout.recv() => {
+          debug!("Sending heartbeat...");
+          writer.write_char('\n').ok().expect("Failed to send heartbeat.");
+          let _ = writer.flush();
+      },
+        frame_to_send = frames_to_send.recv() => {
+          frame_to_send.write(&mut writer).ok().expect("Couldn't send message!");
+        }
+      }
+    }
+  }
+
+   fn receive_loop(frame_recipient: Sender<Frame>, tcp_stream: TcpStream){
+    let (trans_tx, trans_rx) : (Sender<Transmission>, Receiver<Transmission>) = channel();
+    spawn(proc(){
+      Session::read_loop(trans_tx, tcp_stream); 
+    });
+    loop {
+      match trans_rx.recv() {
+        HeartBeat => debug!("Received heartbeat"),
+        CompleteFrame(frame) => frame_recipient.send(frame)
+      }
+    }
+  }
+ 
+
+  fn receive_loop_with_heartbeat(frame_recipient: Sender<Frame>, tcp_stream: TcpStream, heartbeat: Duration){
+    let (trans_tx, trans_rx) : (Sender<Transmission>, Receiver<Transmission>) = channel();
+    spawn(proc(){
+      Session::read_loop(trans_tx, tcp_stream); 
+    });
+
+
+    let mut timer = Timer::new().unwrap(); 
+    loop {
+      let timeout = timer.oneshot(heartbeat);
+      select! {
+        () = timeout.recv() => error!("Did not receive expected heartbeat!"),
+        transmission = trans_rx.recv() => {
+          match transmission {
+            HeartBeat => debug!("Received heartbeat"),
+            CompleteFrame(frame) => frame_recipient.send(frame)
+          }
+        }
+      }
+    }
+  }
+
+  fn read_loop(transmission_listener: Sender<Transmission>, tcp_stream: TcpStream){
+    let mut reader : BufferedReader<TcpStream> = BufferedReader::new(tcp_stream);
+    loop {
+      match Frame::read(&mut reader){
+         Ok(transmission) => transmission_listener.send(transmission),
+         Err(error) => fail!("Couldn't read from server!: {}", error)
+      }
+    }
+  }
+
   fn default_error_callback(frame : &Frame) {
     error!("ERROR received:\n{}", frame);
   }
@@ -108,7 +214,7 @@ impl Session {
  
   pub fn send_bytes(&mut self, topic: &str, mime_type: &str, body: &[u8]) -> IoResult<()> {
     let send_frame = Frame::send(topic, mime_type, body);
-    self.send(send_frame)
+    Ok(self.send(send_frame))
   }
 
   pub fn send_text_with_receipt(&mut self, topic: &str, body: &str) -> IoResult<()> {
@@ -121,7 +227,8 @@ impl Session {
     send_frame.headers.push(
       Header::encode_key_value("receipt", receipt_id.as_slice())
     );
-    try!(send_frame.write(&mut self.connection.writer));
+    //try!(send_frame.write(&mut self.connection.sender));
+    self.send(send_frame);
     self.outstanding_receipts.insert(receipt_id, Outstanding);
     Ok(())
   }
@@ -131,7 +238,8 @@ impl Session {
     let sub = Subscription::new(next_id, topic, ack_mode, callback);
     let subscribe_frame = Frame::subscribe(sub.id.as_slice(), sub.topic.as_slice(), ack_mode);
     debug!("Sending frame:\n{}", subscribe_frame);
-    try!(subscribe_frame.write(&mut self.connection.writer));
+    self.send(subscribe_frame);
+    //try!(subscribe_frame.write(&mut self.connection.sender));
     debug!("Registering callback for subscription id: {}", sub.id);
     let id_to_return = sub.id.to_string();
     self.subscriptions.insert(sub.id.to_string(), sub);
@@ -141,12 +249,12 @@ impl Session {
   pub fn unsubscribe(&mut self, sub_id: &str) -> IoResult<()> {
      let _ = self.subscriptions.pop_equiv(&sub_id);
      let unsubscribe_frame = Frame::unsubscribe(sub_id.as_slice());
-     self.send(unsubscribe_frame)
+     Ok(self.send(unsubscribe_frame))
   }
 
   pub fn disconnect(&mut self) -> IoResult<()> {
     let disconnect_frame = Frame::disconnect();
-    self.send(disconnect_frame)
+    Ok(self.send(disconnect_frame))
   }
 
   pub fn begin_transaction<'a>(&'a mut self) -> IoResult<Transaction<'a>> {
@@ -155,16 +263,15 @@ impl Session {
     Ok(tx)
   }
 
-  pub fn receive_frame(&mut self) -> IoResult<Frame> {
-    Ok(try!(Frame::read(&mut self.connection.reader)))
+  pub fn send(&self, frame: Frame) {
+    self.sender.send(frame);
   }
 
-  pub fn send(&mut self, frame: Frame) -> IoResult<()> {
-    let _ = try!(frame.write(&mut self.connection.writer));
-    Ok(())
+  pub fn receive(&self) -> Frame {
+    self.receiver.recv()
   }
 
-  pub fn dispatch(&mut self, frame: Frame) -> () {
+  pub fn dispatch(&mut self, frame: Frame) {
     // Check for ERROR frame
     match frame.command.as_slice() {
        "ERROR" => return (self.error_callback)(&frame),
@@ -211,23 +318,19 @@ impl Session {
 
   fn acknowledge_frame(&mut self, ack_id: &str) -> IoResult<()> {
     let ack_frame = Frame::ack(ack_id);
-    self.send(ack_frame)
+    Ok(self.send(ack_frame))
   }
 
   fn negatively_acknowledge_frame(&mut self, ack_id: &str) -> IoResult<()>{
     let nack_frame = Frame::nack(ack_id);
-    self.send(nack_frame)
-  }
-
-  pub fn receive(&mut self) -> IoResult<()>{
-    let frame = try!(self.receive_frame());
-    debug!("Received '{}' frame, dispatching.", frame.command);
-    Ok(self.dispatch(frame))
+    Ok(self.send(nack_frame))
   }
 
   pub fn listen(&mut self) {
     loop {
-      let _ = self.receive(); // TODO: Make match with possible failure
+      let frame = self.receive();
+      debug!("Received '{}' frame, dispatching.", frame.command);
+      self.dispatch(frame)
     }
   }      
 }
