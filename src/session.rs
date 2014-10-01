@@ -1,6 +1,7 @@
 use std::collections::hashmap::HashMap;
 use std::time::Duration;
 use std::io::BufferedReader;
+use std::io::BufferedWriter;
 use std::io::Timer;
 use std::io::IoResult;
 use std::io::net::tcp::TcpStream;
@@ -15,7 +16,7 @@ use subscription::ClientIndividual;
 use subscription::Subscription;
 use frame::Frame;
 use frame::Transmission;
-use frame::Heartbeat;
+use frame::HeartBeat;
 use frame::CompleteFrame;
 use header;
 use header::Header;
@@ -80,24 +81,27 @@ impl Session {
     }
   }
  
- fn send_loop(frames_to_send: Receiver<Frame>, mut tcp_stream: TcpStream){
+ fn send_loop(frames_to_send: Receiver<Frame>, tcp_stream: TcpStream){
+    let mut writer : BufferedWriter<TcpStream> = BufferedWriter::new(tcp_stream);
     loop {
       let frame_to_send = frames_to_send.recv();
-      frame_to_send.write(&mut tcp_stream).ok().expect("Couldn't send message!");
+      frame_to_send.write(&mut writer).ok().expect("Couldn't send message!");
     }
   }
 
-  fn send_loop_with_heartbeat(frames_to_send: Receiver<Frame>, mut tcp_stream: TcpStream, heartbeat: Duration){
+  fn send_loop_with_heartbeat(frames_to_send: Receiver<Frame>, tcp_stream: TcpStream, heartbeat: Duration){
+    let mut writer : BufferedWriter<TcpStream> = BufferedWriter::new(tcp_stream);
     let mut timer = Timer::new().unwrap(); 
     loop {
       let timeout = timer.oneshot(heartbeat);
       select! {
         () = timeout.recv() => {
           debug!("Sending heartbeat...");
-          tcp_stream.write_char('\n').ok().expect("Failed to send heartbeat.");
+          writer.write_char('\n').ok().expect("Failed to send heartbeat.");
+          let _ = writer.flush();
       },
         frame_to_send = frames_to_send.recv() => {
-          frame_to_send.write(&mut tcp_stream).ok().expect("Couldn't send message!");
+          frame_to_send.write(&mut writer).ok().expect("Couldn't send message!");
         }
       }
     }
@@ -110,7 +114,7 @@ impl Session {
     });
     loop {
       match trans_rx.recv() {
-        Heartbeat => debug!("Received heartbeat"),
+        HeartBeat => debug!("Received heartbeat"),
         CompleteFrame(frame) => frame_recipient.send(frame)
       }
     }
@@ -131,7 +135,7 @@ impl Session {
         () = timeout.recv() => error!("Did not receive expected heartbeat!"),
         transmission = trans_rx.recv() => {
           match transmission {
-            Heartbeat => debug!("Received heartbeat"),
+            HeartBeat => debug!("Received heartbeat"),
             CompleteFrame(frame) => frame_recipient.send(frame)
           }
         }

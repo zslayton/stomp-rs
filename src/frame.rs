@@ -7,6 +7,7 @@ use std::io::IoResult;
 use std::io::IoError;
 use std::io::InvalidInput;
 use std::io::BufferedReader;
+use std::io::BufferedWriter;
 use std::str::from_utf8;
 
 use std::fmt::Show;
@@ -20,7 +21,7 @@ pub struct Frame {
 }
 
 pub enum Transmission {
-  Heartbeat,
+  HeartBeat,
   CompleteFrame(Frame)
 }
 
@@ -63,7 +64,7 @@ impl Frame {
     frame_string
   }
 
-  pub fn write<T: Writer>(&self, stream: &mut T) -> IoResult<()> {
+  pub fn write<T: Writer>(&self, stream: &mut BufferedWriter<T>) -> IoResult<()> {
     debug!("Sending frame:\n{}", self.to_str());
     try!(stream.write_str(self.command.as_slice()));
     try!(stream.write_str("\n"));
@@ -74,6 +75,7 @@ impl Frame {
     try!(stream.write_str("\n"));
     try!(stream.write(self.body.as_slice()));
     try!(stream.write(&[0]));
+    try!(stream.flush());
     debug!("write() complete.");
     Ok(())
   }
@@ -95,7 +97,7 @@ impl Frame {
     // Empty lines are interpreted as heartbeats 
     line = Frame::chomp_line(try!(stream.read_line()));
     if line.len() == 0 {
-      return Ok(Heartbeat);
+      return Ok(HeartBeat);
     }
 
     let command : String = line;
