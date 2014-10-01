@@ -7,6 +7,7 @@ use std::io::IoResult;
 use std::io::IoError;
 use std::io::InvalidInput;
 use std::io::BufferedReader;
+use std::io::BufferedWriter;
 use std::str::from_utf8;
 
 use std::fmt::Show;
@@ -17,6 +18,11 @@ pub struct Frame {
   pub command : String,
   pub headers : HeaderList, 
   pub body : Vec<u8>
+}
+
+pub enum Transmission {
+  HeartBeat,
+  CompleteFrame(Frame)
 }
 
 impl Show for Frame {
@@ -58,7 +64,7 @@ impl Frame {
     frame_string
   }
 
-  pub fn write<T: Writer>(&self, stream: &mut T) -> IoResult<()> {
+  pub fn write<T: Writer>(&self, stream: &mut BufferedWriter<T>) -> IoResult<()> {
     debug!("Sending frame:\n{}", self.to_str());
     try!(stream.write_str(self.command.as_slice()));
     try!(stream.write_str("\n"));
@@ -69,6 +75,7 @@ impl Frame {
     try!(stream.write_str("\n"));
     try!(stream.write(self.body.as_slice()));
     try!(stream.write(&[0]));
+    try!(stream.flush());
     debug!("write() complete.");
     Ok(())
   }
@@ -85,15 +92,14 @@ impl Frame {
     line
   }
 
-  pub fn read<R: Reader>(stream: &mut BufferedReader<R>) -> IoResult<Frame> {
+  pub fn read<R: Reader>(stream: &mut BufferedReader<R>) -> IoResult<Transmission> {
     let mut line : String;
-    // Consume any number of empty preceding lines
-    loop {
-      line = Frame::chomp_line(try!(stream.read_line()));
-      if line.len() > 0 {
-        break;
-      }
+    // Empty lines are interpreted as heartbeats 
+    line = Frame::chomp_line(try!(stream.read_line()));
+    if line.len() == 0 {
+      return Ok(HeartBeat);
     }
+
     let command : String = line;
 
     let mut header_list : HeaderList = HeaderList::with_capacity(6);
@@ -120,12 +126,13 @@ impl Frame {
         body = try!(stream.read_until(0 as u8));
       }
     }
-    Ok(Frame{command: command, headers: header_list, body:body}) 
+    Ok(CompleteFrame(Frame{command: command, headers: header_list, body:body}))
   }
 
-  pub fn connect() -> Frame {
+  pub fn connect(tx_heartbeat_ms: uint, rx_heartbeat_ms: uint) -> Frame {
     let mut header_list : HeaderList = HeaderList::with_capacity(2);
     header_list.push(Header::encode_key_value("accept-version","1.2"));
+    header_list.push(Header::encode_key_value("heart-beat",format!("{},{}", tx_heartbeat_ms, rx_heartbeat_ms).as_slice()));
     header_list.push(Header::encode_key_value("content-length","0"));
     let connect_frame = Frame {
        command : "CONNECT".to_string(),
