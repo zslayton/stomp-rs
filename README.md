@@ -26,6 +26,7 @@ fn main() {
     Err(error) => fail!("Could not connect to the server: {}", error)
   };
   
+  // The callback system will switch to unboxed closures when that language feature is available
   fn on_message(frame: &Frame) -> AckOrNack {
     println!("Received a message:\n{}", frame);
     Ack
