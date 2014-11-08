@@ -1,6 +1,6 @@
 stomp-rs ![Travis CI Build Status](https://api.travis-ci.org/zslayton/stomp-rs.png?branch=master)
 =====
-`stomp-rs` aspires to provide a full [STOMP](http://stomp.github.io/stomp-specification-1.2.html) 1.2 client implementation for the [Rust programming language](http://www.rust-lang.org/). This allows programs written in Rust to interact with message queueing services like [ActiveMQ](http://activemq.apache.org/) and [RabbitMQ](http://www.rabbitmq.com/).
+`stomp-rs` provides a full [STOMP](http://stomp.github.io/stomp-specification-1.2.html) 1.2 client implementation for the [Rust programming language](http://www.rust-lang.org/). This allows programs written in Rust to interact with message queueing services like [ActiveMQ](http://activemq.apache.org/) and [RabbitMQ](http://www.rabbitmq.com/).
 
 - [x] Connect
 - [x] Subscribe
@@ -9,7 +9,7 @@ stomp-rs ![Travis CI Build Status](https://api.travis-ci.org/zslayton/stomp-rs.p
 - [x] Transactions
 - [x] Receipts
 - [x] Disconnect
-- [ ] Heartbeats
+- [x] Heartbeats
 
 The APIs for `stomp-rs` are not yet stable and are likely to fluctuate before v1.0.
 
@@ -26,6 +26,7 @@ fn main() {
     Err(error) => fail!("Could not connect to the server: {}", error)
   };
   
+  // The callback system will switch to unboxed closures when that language feature is available
   fn on_message(frame: &Frame) -> AckOrNack {
     println!("Received a message:\n{}", frame);
     Ack
