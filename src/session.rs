@@ -1,4 +1,4 @@
-use std::collections::hashmap::HashMap;
+use std::collections::hash_map::HashMap;
 use std::time::Duration;
 use std::io::BufferedReader;
 use std::io::BufferedWriter;
@@ -43,7 +43,7 @@ pub struct Session {
   error_callback: fn(&Frame) -> ()
 }
 
-pub static grace_period_multiplier : f64 = 2.0f64;
+pub static GRACE_PERIOD_MULTIPLIER : f64 = 2.0f64;
 
 impl Session {
   pub fn new(connection: Connection, tx_heartbeat_ms: uint, rx_heartbeat_ms: uint) -> Session {
@@ -52,7 +52,7 @@ impl Session {
     let (sender_tx, sender_rx) : (Sender<Frame>, Receiver<Frame>) = channel();
     let (receiver_tx, receiver_rx) : (Sender<Frame>, Receiver<Frame>) = channel();
 
-    let modified_rx_heartbeat_ms : uint = ((rx_heartbeat_ms as f64) * grace_period_multiplier) as uint;
+    let modified_rx_heartbeat_ms : uint = ((rx_heartbeat_ms as f64) * GRACE_PERIOD_MULTIPLIER) as uint;
     
     spawn(proc(){
       match modified_rx_heartbeat_ms {
@@ -148,7 +148,7 @@ impl Session {
     loop {
       match Frame::read(&mut reader){
          Ok(transmission) => transmission_listener.send(transmission),
-         Err(error) => fail!("Couldn't read from server!: {}", error)
+         Err(error) => panic!("Couldn't read from server!: {}", error)
       }
     }
   }
@@ -168,16 +168,16 @@ impl Session {
   fn handle_receipt(&mut self, frame: Frame) {
     match frame.headers.get_receipt_id() {
       Some(ReceiptId(ref receipt_id)) => {
-        match self.outstanding_receipts.pop_equiv(receipt_id) {
+        match self.outstanding_receipts.pop_equiv(*receipt_id) {
           Some(Outstanding) => {
             debug!("Removed ReceiptId '{}' from pending receipts.", *receipt_id)
           },
           None => {
-            fail!("Received unexpected RECEIPT '{}'", *receipt_id)
+            panic!("Received unexpected RECEIPT '{}'", *receipt_id)
           }
         }
       },
-      None => fail!("Received RECEIPT frame without a receipt-id")
+      None => panic!("Received RECEIPT frame without a receipt-id")
     };
     (self.receipt_callback)(&frame);
   }
@@ -247,7 +247,7 @@ impl Session {
   }
 
   pub fn unsubscribe(&mut self, sub_id: &str) -> IoResult<()> {
-     let _ = self.subscriptions.pop_equiv(&sub_id);
+     let _ = self.subscriptions.pop_equiv(sub_id);
      let unsubscribe_frame = Frame::unsubscribe(sub_id.as_slice());
      Ok(self.send(unsubscribe_frame))
   }
@@ -290,7 +290,7 @@ impl Session {
 
       let (a, c) = 
          self.subscriptions
-         .find_equiv(&sub_id)
+         .find_equiv(sub_id)
          .map(|sub| (sub.ack_mode, sub.callback))
          .expect("Received a message for an unknown subscription.");
       ack_mode = a;
@@ -311,7 +311,7 @@ impl Session {
         match callback_result {
           Ack =>  self.acknowledge_frame(ack_id),
           Nack => self.negatively_acknowledge_frame(ack_id)
-        }.unwrap_or_else(|error|fail!(format!("Could not acknowledge frame: {}", error)));
+        }.unwrap_or_else(|error|panic!(format!("Could not acknowledge frame: {}", error)));
       } // Client | ...
     }
   } 
