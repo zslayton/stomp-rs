@@ -23,7 +23,7 @@ pub struct Connection {
 impl Connection {
 
   pub fn new(ip_address: &str, port: u16) -> IoResult<Connection> {
-    let tcp_stream = try!(TcpStream::connect(ip_address, port));
+    let tcp_stream = try!(TcpStream::connect((ip_address, port)));
     Ok(Connection {
       ip_address: ip_address.to_string(),
       port: port,
