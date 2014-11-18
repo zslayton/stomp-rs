@@ -23,7 +23,7 @@ use stomp::subscription::{Ack, AckOrNack, Client};
 fn main() {
   let mut session = match stomp::connect("127.0.0.1", 61613) {
     Ok(session)  => session,
-    Err(error) => fail!("Could not connect to the server: {}", error)
+    Err(error) => panic!("Could not connect to the server: {}", error)
   };
   
   // The callback system will switch to unboxed closures when that language feature is available
@@ -50,7 +50,7 @@ fn main() {
 ```rust
   let mut tx = match session.begin_transaction() {
     Ok(tx) => tx,
-    Err(error) => fail!("Could not begin new transaction: {}", error)
+    Err(error) => panic!("Could not begin new transaction: {}", error)
   };
 
   tx.send_text(topic, "Animal");
@@ -79,7 +79,7 @@ fn main() {
 ### Handling ERROR frames
 ```rust
   fn on_error(frame: &Frame) {
-    fail!("ERROR frame received:\n{}", frame);
+    panic!("ERROR frame received:\n{}", frame);
   }
 
   session.on_error(on_error);
