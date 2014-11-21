@@ -1,8 +1,7 @@
 use std::io::net::tcp::TcpStream;
 use std::io::BufferedReader;
 use std::io::BufferedWriter;
-use frame::HeartBeat;
-use frame::CompleteFrame;
+use frame::Transmission::{HeartBeat, CompleteFrame};
 use std::io::IoResult;
 use std::io::IoError;
 use std::io::InvalidInput;
