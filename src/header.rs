@@ -171,9 +171,9 @@ impl StompHeaderSet for HeaderList {
       None => return None
     };
     let versions: Vec<StompVersion> = versions.split(',').filter_map(|v| match v.trim() {
-      "1.0" => Some(Stomp_v1_0),
-      "1.1" => Some(Stomp_v1_1),
-      "1.2" => Some(Stomp_v1_2),
+      "1.0" => Some(StompVersion::Stomp_v1_0),
+      "1.1" => Some(StompVersion::Stomp_v1_1),
+      "1.2" => Some(StompVersion::Stomp_v1_2),
       _ => None
     }).collect();
     Some(versions)
@@ -288,9 +288,9 @@ impl StompHeaderSet for HeaderList {
       None => return None
     };
     match (version).as_slice() {
-      "1.0" => Some(Version(Stomp_v1_0)), // TODO: Impl FromStr for StompVersion
-      "1.1" => Some(Version(Stomp_v1_1)),
-      "1.2" => Some(Version(Stomp_v1_2)),
+      "1.0" => Some(Version(StompVersion::Stomp_v1_0)), // TODO: Impl FromStr for StompVersion
+      "1.1" => Some(Version(StompVersion::Stomp_v1_1)),
+      "1.2" => Some(Version(StompVersion::Stomp_v1_2)),
       _ => None
     }
   }

@@ -7,17 +7,13 @@ use std::io::IoResult;
 use std::io::net::tcp::TcpStream;
 use connection::Connection;
 use subscription::AckMode;
-use subscription::Auto;
+use subscription::AckMode::{Auto, Client, ClientIndividual};
 use subscription::AckOrNack;
-use subscription::Ack;
-use subscription::Nack;
-use subscription::Client;
-use subscription::ClientIndividual;
+use subscription::AckOrNack::{Ack, Nack};
 use subscription::Subscription;
 use frame::Frame;
 use frame::Transmission;
-use frame::HeartBeat;
-use frame::CompleteFrame;
+use frame::Transmission::{HeartBeat, CompleteFrame};
 use header;
 use header::Header;
 use header::ReceiptId;
@@ -168,8 +164,8 @@ impl Session {
   fn handle_receipt(&mut self, frame: Frame) {
     match frame.headers.get_receipt_id() {
       Some(ReceiptId(ref receipt_id)) => {
-        match self.outstanding_receipts.pop_equiv(*receipt_id) {
-          Some(Outstanding) => {
+        match self.outstanding_receipts.remove(*receipt_id) {
+          Some(ReceiptStatus::Outstanding) => {
             debug!("Removed ReceiptId '{}' from pending receipts.", *receipt_id)
           },
           None => {
@@ -229,7 +225,7 @@ impl Session {
     );
     //try!(send_frame.write(&mut self.connection.sender));
     self.send(send_frame);
-    self.outstanding_receipts.insert(receipt_id, Outstanding);
+    self.outstanding_receipts.insert(receipt_id, ReceiptStatus::Outstanding);
     Ok(())
   }
 
@@ -247,7 +243,7 @@ impl Session {
   }
 
   pub fn unsubscribe(&mut self, sub_id: &str) -> IoResult<()> {
-     let _ = self.subscriptions.pop_equiv(sub_id);
+     let _ = self.subscriptions.remove(sub_id);
      let unsubscribe_frame = Frame::unsubscribe(sub_id.as_slice());
      Ok(self.send(unsubscribe_frame))
   }
@@ -290,7 +286,7 @@ impl Session {
 
       let (a, c) = 
          self.subscriptions
-         .find_equiv(sub_id)
+         .get(sub_id)
          .map(|sub| (sub.ack_mode, sub.callback))
          .expect("Received a message for an unknown subscription.");
       ack_mode = a;

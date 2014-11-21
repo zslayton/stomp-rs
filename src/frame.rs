@@ -97,7 +97,7 @@ impl Frame {
     // Empty lines are interpreted as heartbeats 
     line = Frame::chomp_line(try!(stream.read_line()));
     if line.len() == 0 {
-      return Ok(HeartBeat);
+      return Ok(Transmission::HeartBeat);
     }
 
     let command : String = line;
@@ -126,7 +126,7 @@ impl Frame {
         body = try!(stream.read_until(0 as u8));
       }
     }
-    Ok(CompleteFrame(Frame{command: command, headers: header_list, body:body}))
+    Ok(Transmission::CompleteFrame(Frame{command: command, headers: header_list, body:body}))
   }
 
   pub fn connect(tx_heartbeat_ms: uint, rx_heartbeat_ms: uint) -> Frame {
