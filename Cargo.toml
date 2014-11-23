@@ -1,9 +1,13 @@
 [package]
 
 name = "stomp"
-version = "0.3.2"
-authors = [ "zslayton" ]
+version = "0.3.3"
+authors = [ "zslayton <zack.slayton@gmail.com" ]
+repository = "https://github.com/zslayton/stomp-rs"
+readme = "README.md"
+description = "A full STOMP 1.2 client implementation. Allows programs to interact with message queueing services like ActiveMQ and RabbitMQ."
+keywords = [ "stomp", "mq", "activemq", "rabbitmq", "queue" ] 
+license = "MIT"
 
 [lib]
-
 name = "stomp"
