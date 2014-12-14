@@ -110,9 +110,11 @@ impl Header {
 // Headers in the Spec
 pub struct AcceptVersion(pub Vec<StompVersion>);
 pub struct Ack<'a>(pub &'a str);
+#[deriving(Copy)]
 pub struct ContentLength(pub uint);
 pub struct Custom(pub Header);
 pub struct Destination<'a> (pub &'a str);
+#[deriving(Copy)]
 pub struct HeartBeat(pub uint, pub uint);
 pub struct Host<'a>(pub &'a str);
 pub struct Id<'a>(pub &'a str);
@@ -125,8 +127,10 @@ pub struct Server<'a>(pub &'a str);
 pub struct Session<'a> (pub &'a str);
 pub struct Subscription<'a>(pub &'a str);
 pub struct Transaction<'a>(pub &'a str);
+#[deriving(Copy)]
 pub struct Version(pub StompVersion);
 
+#[deriving(Copy)]
 pub enum StompVersion {
   Stomp_v1_0,
   Stomp_v1_1,
