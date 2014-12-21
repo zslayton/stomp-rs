@@ -1,3 +1,4 @@
+use std::thread::Thread;
 use std::collections::hash_map::HashMap;
 use std::time::Duration;
 use std::io::BufferedReader;
@@ -50,13 +51,13 @@ impl Session {
 
     let modified_rx_heartbeat_ms : uint = ((rx_heartbeat_ms as f64) * GRACE_PERIOD_MULTIPLIER) as uint;
     
-    spawn(proc(){
+    let _ = Thread::spawn(move || {
       match modified_rx_heartbeat_ms {
         0 => Session::receive_loop(receiver_tx, reading_stream),
         _ => Session::receive_loop_with_heartbeat(receiver_tx, reading_stream, Duration::milliseconds(modified_rx_heartbeat_ms as i64))
       } 
     });
-    spawn(proc(){
+    let _ = Thread::spawn(move || {
       match tx_heartbeat_ms {
         0 => Session::send_loop(sender_rx, writing_stream),
         _ => Session::send_loop_with_heartbeat(sender_rx, writing_stream, Duration::milliseconds(tx_heartbeat_ms as i64))
@@ -105,7 +106,7 @@ impl Session {
 
    fn receive_loop(frame_recipient: Sender<Frame>, tcp_stream: TcpStream){
     let (trans_tx, trans_rx) : (Sender<Transmission>, Receiver<Transmission>) = channel();
-    spawn(proc(){
+    let _ = Thread::spawn(move || {
       Session::read_loop(trans_tx, tcp_stream); 
     });
     loop {
@@ -119,7 +120,7 @@ impl Session {
 
   fn receive_loop_with_heartbeat(frame_recipient: Sender<Frame>, tcp_stream: TcpStream, heartbeat: Duration){
     let (trans_tx, trans_rx) : (Sender<Transmission>, Receiver<Transmission>) = channel();
-    spawn(proc(){
+    let _ = Thread::spawn(move || {
       Session::read_loop(trans_tx, tcp_stream); 
     });
 

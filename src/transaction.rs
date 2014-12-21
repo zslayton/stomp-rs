@@ -9,7 +9,7 @@ pub struct Transaction<'a> {
 }
 
 impl <'a> Transaction<'a> {
-  pub fn new<'a>(id: uint, session: &'a mut Session) -> Transaction<'a> {
+  pub fn new(id: uint, session: &'a mut Session) -> Transaction<'a> {
     Transaction {
       id: format!("tx/{}",id),
       session: session,
