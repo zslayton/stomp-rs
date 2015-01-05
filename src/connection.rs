@@ -88,7 +88,7 @@ impl Connection {
        _ => return Err(IoError{
              kind: InvalidInput, 
              desc: "Could not connect.",
-             detail: from_utf8(connected_frame.body.as_slice()).map(|err: &str| err.to_string())
+             detail: from_utf8(connected_frame.body.as_slice()).ok().map(|err: &str| err.to_string())
            })
     }
     match connected_frame.headers.get_heart_beat() {

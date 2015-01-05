@@ -3,6 +3,7 @@ use std::collections::hash_map::HashMap;
 use std::time::Duration;
 use std::io::BufferedReader;
 use std::io::BufferedWriter;
+use std::sync::mpsc::{Sender, Receiver, channel};
 use std::io::Timer;
 use std::io::IoResult;
 use std::io::net::tcp::TcpStream;
@@ -81,7 +82,7 @@ impl Session {
  fn send_loop(frames_to_send: Receiver<Frame>, tcp_stream: TcpStream){
     let mut writer : BufferedWriter<TcpStream> = BufferedWriter::new(tcp_stream);
     loop {
-      let frame_to_send = frames_to_send.recv();
+      let frame_to_send = frames_to_send.recv().ok().expect("Could not receive the next frame: communication was lost with the receiving thread.");
       frame_to_send.write(&mut writer).ok().expect("Couldn't send message!");
     }
   }
@@ -92,13 +93,13 @@ impl Session {
     loop {
       let timeout = timer.oneshot(heartbeat);
       select! {
-        () = timeout.recv() => {
+        _ = timeout.recv() => {
           debug!("Sending heartbeat...");
           writer.write_char('\n').ok().expect("Failed to send heartbeat.");
           let _ = writer.flush();
-      },
+        },
         frame_to_send = frames_to_send.recv() => {
-          frame_to_send.write(&mut writer).ok().expect("Couldn't send message!");
+          frame_to_send.unwrap().write(&mut writer).ok().expect("Couldn't send message!");
         }
       }
     }
@@ -111,8 +112,9 @@ impl Session {
     });
     loop {
       match trans_rx.recv() {
-        HeartBeat => debug!("Received heartbeat"),
-        CompleteFrame(frame) => frame_recipient.send(frame)
+        Ok(HeartBeat) => debug!("Received heartbeat"),
+        Ok(CompleteFrame(frame)) => frame_recipient.send(frame).unwrap(),
+        Err(err) => panic!("Could not read Transmission from remote host: {}", err)
       }
     }
   }
@@ -129,11 +131,12 @@ impl Session {
     loop {
       let timeout = timer.oneshot(heartbeat);
       select! {
-        () = timeout.recv() => error!("Did not receive expected heartbeat!"),
+        _ = timeout.recv() => error!("Did not receive expected heartbeat!"),
         transmission = trans_rx.recv() => {
           match transmission {
-            HeartBeat => debug!("Received heartbeat"),
-            CompleteFrame(frame) => frame_recipient.send(frame)
+            Ok(HeartBeat) => debug!("Received heartbeat"),
+            Ok(CompleteFrame(frame)) => frame_recipient.send(frame).unwrap(),
+            Err(err) => panic!("Could not read Transmission from remote host: {}", err)
           }
         }
       }
@@ -144,7 +147,7 @@ impl Session {
     let mut reader : BufferedReader<TcpStream> = BufferedReader::new(tcp_stream);
     loop {
       match Frame::read(&mut reader){
-         Ok(transmission) => transmission_listener.send(transmission),
+         Ok(transmission) => transmission_listener.send(transmission).unwrap(),
          Err(error) => panic!("Couldn't read from server!: {}", error)
       }
     }
@@ -261,11 +264,11 @@ impl Session {
   }
 
   pub fn send(&self, frame: Frame) {
-    self.sender.send(frame);
+    let _ = self.sender.send(frame);
   }
 
   pub fn receive(&self) -> Frame {
-    self.receiver.recv()
+    self.receiver.recv().unwrap()
   }
 
   pub fn dispatch(&mut self, frame: Frame) {

@@ -57,8 +57,8 @@ impl Frame {
     }
     frame_string.push_str("\n");
     let body_string : &str = match from_utf8(self.body.as_slice()) {
-      Some(ref s) => *s,
-      None => "<Binary content>" // Space is wasted in this case. Could shrink to fit?
+      Ok(ref s) => *s,
+      Err(_) => "<Binary content>" // Space is wasted in this case. Could shrink to fit?
     };
     frame_string.push_str(body_string);
     frame_string
@@ -85,7 +85,7 @@ impl Frame {
     let chomped_length : uint;
     {
       let chars_to_remove : &[char] = &['\r', '\n'];
-      let trimmed_line : &str = line.as_slice().trim_right_chars(chars_to_remove);
+      let trimmed_line : &str = line.as_slice().trim_right_matches(chars_to_remove);
       chomped_length = trimmed_line.len();
     }
     line.truncate(chomped_length);

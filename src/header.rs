@@ -110,11 +110,11 @@ impl Header {
 // Headers in the Spec
 pub struct AcceptVersion(pub Vec<StompVersion>);
 pub struct Ack<'a>(pub &'a str);
-#[deriving(Copy)]
+#[derive(Copy)]
 pub struct ContentLength(pub uint);
 pub struct Custom(pub Header);
 pub struct Destination<'a> (pub &'a str);
-#[deriving(Copy)]
+#[derive(Copy)]
 pub struct HeartBeat(pub uint, pub uint);
 pub struct Host<'a>(pub &'a str);
 pub struct Id<'a>(pub &'a str);
@@ -127,10 +127,10 @@ pub struct Server<'a>(pub &'a str);
 pub struct Session<'a> (pub &'a str);
 pub struct Subscription<'a>(pub &'a str);
 pub struct Transaction<'a>(pub &'a str);
-#[deriving(Copy)]
+#[derive(Copy)]
 pub struct Version(pub StompVersion);
 
-#[deriving(Copy)]
+#[derive(Copy)]
 pub enum StompVersion {
   Stomp_v1_0,
   Stomp_v1_1,
@@ -202,7 +202,7 @@ impl StompHeaderSet for HeaderList {
       Some(h) => h.get_value(), 
       None => return None
     };
-    let spec_list: Vec<uint> = spec.split(',').filter_map(|str_val| from_str::<uint>(str_val)).collect();
+    let spec_list: Vec<uint> = spec.split(',').filter_map(|str_val| str_val.parse::<uint>()).collect();
     match spec_list.as_slice() {
       [x, y] => Some(HeartBeat(x, y)),
       _ => None
@@ -304,7 +304,7 @@ impl StompHeaderSet for HeaderList {
       Some(h) => h.get_value(),
       None => return None
     };
-    match from_str::<uint>(length) {
+    match length.parse::<uint>() {
       Some(l) => Some(ContentLength(l)),
       None => None
     }

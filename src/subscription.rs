@@ -1,6 +1,6 @@
 use frame::Frame;
 
-#[deriving(Copy)]
+#[derive(Copy)]
 pub enum AckMode {
   Auto,
   Client,
@@ -18,7 +18,7 @@ impl AckMode {
 }
 
 
-#[deriving(Copy)]
+#[derive(Copy)]
 pub enum AckOrNack {
   Ack,
   Nack
