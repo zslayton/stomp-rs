@@ -51,19 +51,18 @@ impl Session {
     let (receiver_tx, receiver_rx) : (Sender<Frame>, Receiver<Frame>) = channel();
 
     let modified_rx_heartbeat_ms : uint = ((rx_heartbeat_ms as f64) * GRACE_PERIOD_MULTIPLIER) as uint;
-    
     let _ = Thread::spawn(move || {
       match modified_rx_heartbeat_ms {
         0 => Session::receive_loop(receiver_tx, reading_stream),
         _ => Session::receive_loop_with_heartbeat(receiver_tx, reading_stream, Duration::milliseconds(modified_rx_heartbeat_ms as i64))
       } 
-    });
+    }).detach();
     let _ = Thread::spawn(move || {
       match tx_heartbeat_ms {
         0 => Session::send_loop(sender_rx, writing_stream),
         _ => Session::send_loop_with_heartbeat(sender_rx, writing_stream, Duration::milliseconds(tx_heartbeat_ms as i64))
       } 
-    });
+    }).detach();
 
     Session {
       connection: connection,
@@ -109,7 +108,7 @@ impl Session {
     let (trans_tx, trans_rx) : (Sender<Transmission>, Receiver<Transmission>) = channel();
     let _ = Thread::spawn(move || {
       Session::read_loop(trans_tx, tcp_stream); 
-    });
+    }).detach();
     loop {
       match trans_rx.recv() {
         Ok(HeartBeat) => debug!("Received heartbeat"),
@@ -124,7 +123,7 @@ impl Session {
     let (trans_tx, trans_rx) : (Sender<Transmission>, Receiver<Transmission>) = channel();
     let _ = Thread::spawn(move || {
       Session::read_loop(trans_tx, tcp_stream); 
-    });
+    }).detach();
 
 
     let mut timer = Timer::new().unwrap(); 
