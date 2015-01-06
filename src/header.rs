@@ -1,7 +1,7 @@
 // Non-camel case types are used for Stomp Protocol version enum variants
 #![allow(non_camel_case_types)]
 
-use std::slice::Items;
+use collections::slice::Iter;
 
 // Ideally this would be a simple typedef. However:
 // See Rust bug #11047: https://github.com/mozilla/rust/issues/11047
@@ -24,7 +24,7 @@ impl HeaderList {
     self.headers.push(header);
   }
 
-  pub fn iter<'a>(&'a self) -> Items<'a, Header> {
+  pub fn iter<'a>(&'a self) -> Iter<'a, Header> {
     self.headers.iter()
   }
 

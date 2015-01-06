@@ -4,6 +4,7 @@
 
 #[phase(plugin, link)]
 extern crate log;
+extern crate collections;
 
 use std::io::IoResult;
 use session::Session;
