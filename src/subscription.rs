@@ -32,7 +32,7 @@ pub struct Subscription {
 }
 
 impl Subscription {
-  pub fn new(id: uint, topic: &str, ack_mode: AckMode, callback: fn(&Frame)->AckOrNack) -> Subscription {
+  pub fn new(id: u32, topic: &str, ack_mode: AckMode, callback: fn(&Frame)->AckOrNack) -> Subscription {
     Subscription {
       id: format!("stomp-rs/{}",id),
       topic: topic.to_string(),

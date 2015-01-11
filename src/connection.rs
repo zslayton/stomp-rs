@@ -30,9 +30,9 @@ impl Connection {
     })
   }
 
-  fn select_heartbeat(client_tx_ms:uint, client_rx_ms:uint, server_tx_ms:uint, server_rx_ms:uint) -> (uint, uint) {
-    let heartbeat_tx_ms: uint;
-    let heartbeat_rx_ms: uint;
+  fn select_heartbeat(client_tx_ms:u32, client_rx_ms:u32, server_tx_ms:u32, server_rx_ms:u32) -> (u32, u32) {
+    let heartbeat_tx_ms: u32;
+    let heartbeat_rx_ms: u32;
     if client_tx_ms == 0 || server_rx_ms == 0 {
       heartbeat_tx_ms = 0; 
     } else {
@@ -46,7 +46,7 @@ impl Connection {
     (heartbeat_tx_ms, heartbeat_rx_ms)
   }
 
-  pub fn start_session(mut self, client_tx_ms: uint, client_rx_ms: uint) -> IoResult<Session> {
+  pub fn start_session(mut self, client_tx_ms: u32, client_rx_ms: u32) -> IoResult<Session> {
     let connect_frame = Frame::connect(client_tx_ms, client_rx_ms);
     let (server_tx_ms, server_rx_ms) = try!(self.start_session_with_frame(connect_frame));
     let (tx_ms, rx_ms) = Connection::select_heartbeat(client_tx_ms, client_rx_ms, server_tx_ms, server_rx_ms);
@@ -54,7 +54,7 @@ impl Connection {
     Ok(session)
   }
 
-  pub fn start_session_with_credentials(mut self, login: &str, passcode: &str, client_tx_ms: uint, client_rx_ms: uint) -> IoResult<Session> {
+  pub fn start_session_with_credentials(mut self, login: &str, passcode: &str, client_tx_ms: u32, client_rx_ms: u32) -> IoResult<Session> {
     let mut connect_frame = Frame::connect(client_tx_ms, client_rx_ms);
     connect_frame.headers.push(
       Header::encode_key_value("login", login)
@@ -68,7 +68,7 @@ impl Connection {
     Ok(session)
   }
   
-  pub fn start_session_with_frame(&mut self, connect_frame: Frame) -> IoResult<(uint, uint)> {
+  pub fn start_session_with_frame(&mut self, connect_frame: Frame) -> IoResult<(u32, u32)> {
     let mut buffered_writer = BufferedWriter::new(self.tcp_stream.clone());
     try!(connect_frame.write(&mut buffered_writer));
     let connected_frame : Frame;

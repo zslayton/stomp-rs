@@ -14,7 +14,7 @@ impl HeaderList {
   pub fn new() -> HeaderList {
     HeaderList::with_capacity(0)
   }
-  pub fn with_capacity(capacity: uint) -> HeaderList {
+  pub fn with_capacity(capacity: usize) -> HeaderList {
     HeaderList {
       headers: Vec::with_capacity(capacity)
     }
@@ -32,7 +32,7 @@ impl HeaderList {
 
 pub struct Header {
   buffer : String,
-  delimiter_index : uint
+  delimiter_index : u32
 }
 
 impl Header {
@@ -43,7 +43,7 @@ impl Header {
     };
     let mut header = Header{
       buffer: raw_string.to_string(),
-      delimiter_index: delimiter_index
+      delimiter_index: delimiter_index as u32
     };
     header = Header::decode_key_value(header.get_key(), header.get_value());
     Some(header)
@@ -63,7 +63,7 @@ impl Header {
     let raw_string = format!("{}:{}", key, Header::encode_value(value));
     Header {
       buffer: raw_string,
-      delimiter_index: key.len()
+      delimiter_index: key.len() as u32
     }
   }
 
@@ -71,7 +71,7 @@ impl Header {
     let raw_string = format!("{}:{}", key, Header::decode_value(value));
     Header {
       buffer: raw_string,
-      delimiter_index: key.len()
+      delimiter_index: key.len() as u32
     }
   }
 
@@ -98,11 +98,11 @@ impl Header {
   }
 
   pub fn get_key<'a>(&'a self) -> &'a str {
-    self.buffer.as_slice().slice_to(self.delimiter_index)
+    self.buffer.as_slice().slice_to(self.delimiter_index as usize)
   }
 
   pub fn get_value<'a>(&'a self) -> &'a str {
-    self.buffer.as_slice().slice_from(self.delimiter_index+1)
+    self.buffer.as_slice().slice_from(self.delimiter_index as usize + 1)
   }
 
 }
@@ -111,11 +111,11 @@ impl Header {
 pub struct AcceptVersion(pub Vec<StompVersion>);
 pub struct Ack<'a>(pub &'a str);
 #[derive(Copy)]
-pub struct ContentLength(pub uint);
+pub struct ContentLength(pub u32);
 pub struct Custom(pub Header);
 pub struct Destination<'a> (pub &'a str);
 #[derive(Copy)]
-pub struct HeartBeat(pub uint, pub uint);
+pub struct HeartBeat(pub u32, pub u32);
 pub struct Host<'a>(pub &'a str);
 pub struct Id<'a>(pub &'a str);
 pub struct Login<'a>(pub &'a str);
@@ -202,7 +202,7 @@ impl StompHeaderSet for HeaderList {
       Some(h) => h.get_value(), 
       None => return None
     };
-    let spec_list: Vec<uint> = spec.split(',').filter_map(|str_val| str_val.parse::<uint>()).collect();
+    let spec_list: Vec<u32> = spec.split(',').filter_map(|str_val| str_val.parse::<u32>()).collect();
     match spec_list.as_slice() {
       [x, y] => Some(HeartBeat(x, y)),
       _ => None
@@ -304,7 +304,7 @@ impl StompHeaderSet for HeaderList {
       Some(h) => h.get_value(),
       None => return None
     };
-    match length.parse::<uint>() {
+    match length.parse::<u32>() {
       Some(l) => Some(ContentLength(l)),
       None => None
     }

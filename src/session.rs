@@ -32,9 +32,9 @@ pub struct Session {
   pub connection : Connection,
   sender: Sender<Frame>,
   receiver: Receiver<Frame>,
-  next_transaction_id: uint,
-  next_subscription_id: uint,
-  next_receipt_id: uint,
+  next_transaction_id: u32,
+  next_subscription_id: u32,
+  next_receipt_id: u32,
   subscriptions: HashMap<String, Subscription>,
   outstanding_receipts: HashMap<String, ReceiptStatus>, 
   receipt_callback: fn(&Frame) -> (), 
@@ -44,25 +44,25 @@ pub struct Session {
 pub static GRACE_PERIOD_MULTIPLIER : f64 = 2.0f64;
 
 impl Session {
-  pub fn new(connection: Connection, tx_heartbeat_ms: uint, rx_heartbeat_ms: uint) -> Session {
+  pub fn new(connection: Connection, tx_heartbeat_ms: u32, rx_heartbeat_ms: u32) -> Session {
     let reading_stream = connection.tcp_stream.clone();
     let writing_stream = reading_stream.clone();
     let (sender_tx, sender_rx) : (Sender<Frame>, Receiver<Frame>) = channel();
     let (receiver_tx, receiver_rx) : (Sender<Frame>, Receiver<Frame>) = channel();
 
-    let modified_rx_heartbeat_ms : uint = ((rx_heartbeat_ms as f64) * GRACE_PERIOD_MULTIPLIER) as uint;
+    let modified_rx_heartbeat_ms : u32 = ((rx_heartbeat_ms as f64) * GRACE_PERIOD_MULTIPLIER) as u32;
     let _ = Thread::spawn(move || {
       match modified_rx_heartbeat_ms {
         0 => Session::receive_loop(receiver_tx, reading_stream),
         _ => Session::receive_loop_with_heartbeat(receiver_tx, reading_stream, Duration::milliseconds(modified_rx_heartbeat_ms as i64))
       } 
-    }).detach();
+    });
     let _ = Thread::spawn(move || {
       match tx_heartbeat_ms {
         0 => Session::send_loop(sender_rx, writing_stream),
         _ => Session::send_loop_with_heartbeat(sender_rx, writing_stream, Duration::milliseconds(tx_heartbeat_ms as i64))
       } 
-    }).detach();
+    });
 
     Session {
       connection: connection,
@@ -108,12 +108,12 @@ impl Session {
     let (trans_tx, trans_rx) : (Sender<Transmission>, Receiver<Transmission>) = channel();
     let _ = Thread::spawn(move || {
       Session::read_loop(trans_tx, tcp_stream); 
-    }).detach();
+    });
     loop {
       match trans_rx.recv() {
         Ok(HeartBeat) => debug!("Received heartbeat"),
         Ok(CompleteFrame(frame)) => frame_recipient.send(frame).unwrap(),
-        Err(err) => panic!("Could not read Transmission from remote host: {}", err)
+        Err(_) => panic!("Could not read Transmission from remote host: the reading thread has died.")
       }
     }
   }
@@ -123,7 +123,7 @@ impl Session {
     let (trans_tx, trans_rx) : (Sender<Transmission>, Receiver<Transmission>) = channel();
     let _ = Thread::spawn(move || {
       Session::read_loop(trans_tx, tcp_stream); 
-    }).detach();
+    });
 
 
     let mut timer = Timer::new().unwrap(); 
@@ -135,7 +135,7 @@ impl Session {
           match transmission {
             Ok(HeartBeat) => debug!("Received heartbeat"),
             Ok(CompleteFrame(frame)) => frame_recipient.send(frame).unwrap(),
-            Err(err) => panic!("Could not read Transmission from remote host: {}", err)
+            Err(_) => panic!("Could not read Transmission from remote host: the readin thread has died.")
           }
         }
       }
@@ -189,19 +189,19 @@ impl Session {
     self.outstanding_receipts.keys().map(|key| key.as_slice()).collect()
   }
 
-  fn generate_transaction_id(&mut self) -> uint {
+  fn generate_transaction_id(&mut self) -> u32 {
     let id = self.next_transaction_id;
     self.next_transaction_id += 1;
     id
   }
 
-  fn generate_subscription_id(&mut self) -> uint {
+  fn generate_subscription_id(&mut self) -> u32 {
     let id = self.next_subscription_id;
     self.next_subscription_id += 1;
     id
   }
 
-  fn generate_receipt_id(&mut self) -> uint {
+  fn generate_receipt_id(&mut self) -> u32 {
     let id = self.next_receipt_id;
     self.next_receipt_id += 1;
     id

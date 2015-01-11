@@ -10,7 +10,7 @@ use std::io::BufferedReader;
 use std::io::BufferedWriter;
 use std::str::from_utf8;
 
-use std::fmt::Show;
+use std::fmt;
 use std::fmt::Formatter;
 use std::fmt::Result;
 
@@ -25,7 +25,7 @@ pub enum Transmission {
   CompleteFrame(Frame)
 }
 
-impl Show for Frame {
+impl fmt::String for Frame {
     fn fmt(&self, f: &mut Formatter) -> Result {
         write!(f, "{}", self.to_str())
     }
@@ -33,13 +33,13 @@ impl Show for Frame {
 
 impl Frame {
 
-  pub fn character_count(&self) -> uint {
-     let mut space_required = 0u;
+  pub fn character_count(&self) -> usize {
+     let mut space_required : usize = 0;
     // Add one to space calculations to make room for '\n'
     space_required += self.command.len() + 1;
     space_required += self.headers.iter()
                       .fold(0, |length, header| 
-                          length + header.get_raw().len()+1
+                          length + header.get_raw().len() +1
                       );
     space_required += 1; // Newline at end of headers
     space_required += self.body.len();
@@ -82,7 +82,7 @@ impl Frame {
 
   fn chomp_line(mut line: String) -> String {
     // This may be suboptimal, but fine for now
-    let chomped_length : uint;
+    let chomped_length : usize;
     {
       let chars_to_remove : &[char] = &['\r', '\n'];
       let trimmed_line : &str = line.as_slice().trim_right_matches(chars_to_remove);
@@ -119,7 +119,7 @@ impl Frame {
     let content_length = header_list.get_content_length();
     match content_length {
       Some(ContentLength(num_bytes)) => {
-        body = try!(stream.read_exact(num_bytes));
+        body = try!(stream.read_exact(num_bytes as usize ));
         let _ = try!(stream.read_exact(1)); // Toss aside trailing null octet
       },
       None => {
@@ -129,7 +129,7 @@ impl Frame {
     Ok(Transmission::CompleteFrame(Frame{command: command, headers: header_list, body:body}))
   }
 
-  pub fn connect(tx_heartbeat_ms: uint, rx_heartbeat_ms: uint) -> Frame {
+  pub fn connect(tx_heartbeat_ms: u32, rx_heartbeat_ms: u32) -> Frame {
     let mut header_list : HeaderList = HeaderList::with_capacity(2);
     header_list.push(Header::encode_key_value("accept-version","1.2"));
     header_list.push(Header::encode_key_value("heart-beat",format!("{},{}", tx_heartbeat_ms, rx_heartbeat_ms).as_slice()));
