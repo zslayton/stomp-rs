@@ -20,7 +20,7 @@ extern crate stomp;
 use stomp::frame::Frame;
 use stomp::subscription::AckOrNack;
 use stomp::subscription::AckOrNack::Ack;
-use stomp::subscription::AckMode::Auto;
+use stomp::subscription::AckMode::Client;
 
 
 fn main() {
