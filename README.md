@@ -18,7 +18,10 @@ The APIs for `stomp-rs` are not yet stable and are likely to fluctuate before v1
 ```rust
 extern crate stomp;
 use stomp::frame::Frame;
-use stomp::subscription::{Ack, AckOrNack, Client};
+use stomp::subscription::AckOrNack;
+use stomp::subscription::AckOrNack::Ack;
+use stomp::subscription::AckMode::Auto;
+
 
 fn main() {
   let mut session = match stomp::connect("127.0.0.1", 61613) {
