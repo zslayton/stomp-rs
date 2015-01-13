@@ -46,6 +46,8 @@ fn main() {
   session.send_text(topic, "Mineral");
   
   session.listen(); // Loops infinitely, awaiting messages
+
+  session.disconnect();
 }
 ```
 
