@@ -1,4 +1,5 @@
 use std::thread::Thread;
+use std::collections::hash_set::HashSet;
 use std::collections::hash_map::HashMap;
 use std::time::Duration;
 use std::io::BufferedReader;
@@ -22,12 +23,6 @@ use header::ReceiptId;
 use header::StompHeaderSet;
 use transaction::Transaction;
 
-//TODO: Replace the HashMap<String, ReceiptStatus> with a Set when
-// Sets finally get `equiv` functionality
-enum ReceiptStatus {
-  Outstanding
-}
-
 pub struct Session {
   pub connection : Connection,
   sender: Sender<Frame>,
@@ -36,7 +31,7 @@ pub struct Session {
   next_subscription_id: u32,
   next_receipt_id: u32,
   subscriptions: HashMap<String, Subscription>,
-  outstanding_receipts: HashMap<String, ReceiptStatus>, 
+  outstanding_receipts: HashSet<String>, 
   receipt_callback: fn(&Frame) -> (), 
   error_callback: fn(&Frame) -> ()
 }
@@ -72,7 +67,7 @@ impl Session {
       next_subscription_id: 0,
       next_receipt_id: 0,
       subscriptions: HashMap::with_capacity(1),
-      outstanding_receipts: HashMap::new(),
+      outstanding_receipts: HashSet::new(),
       receipt_callback: Session::default_receipt_callback,
       error_callback: Session::default_error_callback
     }
@@ -167,13 +162,10 @@ impl Session {
   fn handle_receipt(&mut self, frame: Frame) {
     match frame.headers.get_receipt_id() {
       Some(ReceiptId(ref receipt_id)) => {
-        match self.outstanding_receipts.remove(*receipt_id) {
-          Some(ReceiptStatus::Outstanding) => {
+        if self.outstanding_receipts.remove(*receipt_id) {
             debug!("Removed ReceiptId '{}' from pending receipts.", *receipt_id)
-          },
-          None => {
+        } else {
             panic!("Received unexpected RECEIPT '{}'", *receipt_id)
-          }
         }
       },
       None => panic!("Received RECEIPT frame without a receipt-id")
@@ -186,7 +178,7 @@ impl Session {
   }
 
   pub fn outstanding_receipts(&self) -> Vec<&str> {
-    self.outstanding_receipts.keys().map(|key| key.as_slice()).collect()
+    self.outstanding_receipts.iter().map(|key| key.as_slice()).collect()
   }
 
   fn generate_transaction_id(&mut self) -> u32 {
@@ -228,7 +220,7 @@ impl Session {
     );
     //try!(send_frame.write(&mut self.connection.sender));
     self.send(send_frame);
-    self.outstanding_receipts.insert(receipt_id, ReceiptStatus::Outstanding);
+    self.outstanding_receipts.insert(receipt_id);
     Ok(())
   }
 
