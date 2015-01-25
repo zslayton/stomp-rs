@@ -98,11 +98,13 @@ impl Header {
   }
 
   pub fn get_key<'a>(&'a self) -> &'a str {
-    self.buffer.as_slice().slice_to(self.delimiter_index as usize)
+    let index : usize = self.delimiter_index as usize;
+    &self.buffer[..index]
   }
 
   pub fn get_value<'a>(&'a self) -> &'a str {
-    self.buffer.as_slice().slice_from(self.delimiter_index as usize + 1)
+    let index : usize = self.delimiter_index as usize + 1;
+    &self.buffer[index..]
   }
 
 }
