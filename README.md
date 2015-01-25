@@ -22,10 +22,12 @@ use stomp::subscription::AckOrNack::{self, Ack};
 use stomp::subscription::AckMode::Client;
 use stomp::subscription::MessageHandler;
 
+// Create a struct to hold any state you'd like manage
 struct ExampleMessageHandler {
   message_count : u64
 }
 
+// Implement the `MessageHandler` trait for your struct
 impl MessageHandler for ExampleMessageHandler {
   fn on_message(&mut self, frame: &Frame) -> AckOrNack {
     self.message_count += 1;
