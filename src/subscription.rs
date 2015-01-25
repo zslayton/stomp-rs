@@ -23,7 +23,7 @@ pub enum AckOrNack {
   Nack
 }
 
-pub trait SubscriptionHandler {
+pub trait MessageHandler {
   fn on_message(&mut self, &Frame) -> AckOrNack;
 }
 
@@ -31,11 +31,11 @@ pub struct Subscription <'a> {
   pub id : String,
   pub topic: String,
   pub ack_mode: AckMode,
-  pub handler: Box<SubscriptionHandler + 'a>
+  pub handler: Box<MessageHandler + 'a>
 }
 
 impl <'a> Subscription <'a> {
-  pub fn new<S>(id: u32, topic: &str, ack_mode: AckMode, handler: S) -> Subscription <'a> where S : SubscriptionHandler + 'a {
+  pub fn new<S>(id: u32, topic: &str, ack_mode: AckMode, handler: S) -> Subscription <'a> where S : MessageHandler + 'a {
     Subscription {
       id: format!("stomp-rs/{}",id),
       topic: topic.to_string(),
