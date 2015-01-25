@@ -25,7 +25,7 @@ pub enum Transmission {
   CompleteFrame(Frame)
 }
 
-impl fmt::String for Frame {
+impl fmt::Display for Frame {
     fn fmt(&self, f: &mut Formatter) -> Result {
         write!(f, "{}", self.to_str())
     }
