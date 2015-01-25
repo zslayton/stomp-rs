@@ -315,13 +315,9 @@ impl StompHeaderSet for HeaderList {
 
 #[macro_export]
 macro_rules! header_list [
-
   ($($header: expr), *) => ({
     let mut header_list = HeaderList::new();
-
     $(header_list.push($header);)*
-
     header_list
   })
-
 ];
