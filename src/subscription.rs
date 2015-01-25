@@ -1,4 +1,6 @@
 use frame::Frame;
+use subscription::AckOrNack::{Ack, Nack};
+use std::sync::mpsc::Sender;
 
 #[derive(Copy)]
 pub enum AckMode {
@@ -35,12 +37,39 @@ pub struct Subscription <'a> {
 }
 
 impl <'a> Subscription <'a> {
-  pub fn new<S>(id: u32, topic: &str, ack_mode: AckMode, handler: S) -> Subscription <'a> where S : MessageHandler + 'a {
+  pub fn new(id: u32, topic: &str, ack_mode: AckMode, message_handler: Box<MessageHandler + 'a>) -> Subscription <'a> {
     Subscription {
       id: format!("stomp-rs/{}",id),
       topic: topic.to_string(),
       ack_mode: ack_mode,
-      handler: Box::new(handler)
+      handler: message_handler
     }
+  }
+}
+
+pub trait ToMessageHandler{
+  fn to_message_handler<'a>(self) -> Box<MessageHandler + 'a>;
+}
+
+struct SendingMessageHandler {
+  sender: Sender<Frame>
+}
+
+impl MessageHandler for SendingMessageHandler {
+  fn on_message(&mut self, frame: &Frame) -> AckOrNack {
+    debug!("Sending frame...");
+    match self.sender.send(frame.clone()) {
+      Ok(_) => Ack,
+      Err(error) => {
+        error!("Failed to send frame: {}", error);
+        Nack
+      }
+    }
+  }
+}
+
+impl ToMessageHandler for Sender<Frame> {
+  fn to_message_handler<'a>(self) -> Box<MessageHandler + 'a> {
+    Box::new(SendingMessageHandler{sender : self}) as Box<MessageHandler>
   }
 }

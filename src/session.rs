@@ -13,7 +13,7 @@ use subscription::AckMode;
 use subscription::AckMode::{Auto, Client, ClientIndividual};
 use subscription::AckOrNack;
 use subscription::AckOrNack::{Ack, Nack};
-use subscription::{Subscription, MessageHandler};
+use subscription::{Subscription, MessageHandler, ToMessageHandler};
 use frame::Frame;
 use frame::Transmission;
 use frame::Transmission::{HeartBeat, CompleteFrame};
@@ -224,9 +224,10 @@ impl <'a> Session <'a> {
     Ok(())
   }
 
-  pub fn subscribe<S>(&mut self, topic: &str, ack_mode: AckMode, handler : S)-> IoResult<String> where S : MessageHandler + 'a {
+  pub fn subscribe<T>(&mut self, topic: &str, ack_mode: AckMode, handler_convertible: T)-> IoResult<String> where T : ToMessageHandler + 'a {
+    let message_handler : Box<MessageHandler> = handler_convertible.to_message_handler();
     let next_id = self.generate_subscription_id();
-    let sub = Subscription::new(next_id, topic, ack_mode, handler);
+    let sub = Subscription::new(next_id, topic, ack_mode, message_handler);
     let subscribe_frame = Frame::subscribe(sub.id.as_slice(), sub.topic.as_slice(), ack_mode);
     debug!("Sending frame:\n{}", subscribe_frame);
     self.send(subscribe_frame);
@@ -321,5 +322,5 @@ impl <'a> Session <'a> {
       debug!("Received '{}' frame, dispatching.", frame.command);
       self.dispatch(frame)
     }
-  }      
+  }
 }
