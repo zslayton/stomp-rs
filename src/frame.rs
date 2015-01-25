@@ -134,6 +134,7 @@ impl Frame {
     header_list.push(Header::encode_key_value("accept-version","1.2"));
     header_list.push(Header::encode_key_value("heart-beat",format!("{},{}", tx_heartbeat_ms, rx_heartbeat_ms).as_slice()));
     header_list.push(Header::encode_key_value("content-length","0"));
+    
     let connect_frame = Frame {
        command : "CONNECT".to_string(),
        headers : header_list,
@@ -159,6 +160,7 @@ impl Frame {
     header_list.push(Header::encode_key_value("destination", topic));
     header_list.push(Header::encode_key_value("id", subscription_id));
     header_list.push(Header::encode_key_value("ack", ack_mode.as_text()));
+
     let subscribe_frame = Frame {
       command : "SUBSCRIBE".to_string(),
       headers : header_list,

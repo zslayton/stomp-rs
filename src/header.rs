@@ -1,6 +1,6 @@
 // Non-camel case types are used for Stomp Protocol version enum variants
+#![macro_use]
 #![allow(non_camel_case_types)]
-
 use collections::slice::Iter;
 
 // Ideally this would be a simple typedef. However:

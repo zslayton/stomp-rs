@@ -30,8 +30,8 @@ pub fn connect_with_credentials_and_heartbeat(ip_address: &str, port: u16, login
 }
 
 pub mod connection;
-pub mod frame;
 pub mod header;
+pub mod frame;
 pub mod session;
 pub mod subscription;
 pub mod transaction;
