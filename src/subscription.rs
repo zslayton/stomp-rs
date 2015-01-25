@@ -17,27 +17,30 @@ impl AckMode {
   }
 }
 
-
 #[derive(Copy)]
 pub enum AckOrNack {
   Ack,
   Nack
 }
 
-pub struct Subscription {
+pub trait SubscriptionHandler {
+  fn on_message(&mut self, &Frame) -> AckOrNack;
+}
+
+pub struct Subscription <'a> { 
   pub id : String,
   pub topic: String,
   pub ack_mode: AckMode,
-  pub callback: fn(&Frame)-> AckOrNack
+  pub handler: Box<SubscriptionHandler + 'a>
 }
 
-impl Subscription {
-  pub fn new(id: u32, topic: &str, ack_mode: AckMode, callback: fn(&Frame)->AckOrNack) -> Subscription {
+impl <'a> Subscription <'a> {
+  pub fn new<S>(id: u32, topic: &str, ack_mode: AckMode, handler: S) -> Subscription <'a> where S : SubscriptionHandler + 'a {
     Subscription {
       id: format!("stomp-rs/{}",id),
       topic: topic.to_string(),
       ack_mode: ack_mode,
-      callback: callback 
+      handler: Box::new(handler)
     }
   }
 }

@@ -46,7 +46,7 @@ impl Connection {
     (heartbeat_tx_ms, heartbeat_rx_ms)
   }
 
-  pub fn start_session(mut self, client_tx_ms: u32, client_rx_ms: u32) -> IoResult<Session> {
+  pub fn start_session<'a>(mut self, client_tx_ms: u32, client_rx_ms: u32) -> IoResult<Session<'a>> {
     let connect_frame = Frame::connect(client_tx_ms, client_rx_ms);
     let (server_tx_ms, server_rx_ms) = try!(self.start_session_with_frame(connect_frame));
     let (tx_ms, rx_ms) = Connection::select_heartbeat(client_tx_ms, client_rx_ms, server_tx_ms, server_rx_ms);
@@ -54,7 +54,7 @@ impl Connection {
     Ok(session)
   }
 
-  pub fn start_session_with_credentials(mut self, login: &str, passcode: &str, client_tx_ms: u32, client_rx_ms: u32) -> IoResult<Session> {
+  pub fn start_session_with_credentials<'a>(mut self, login: &str, passcode: &str, client_tx_ms: u32, client_rx_ms: u32) -> IoResult<Session<'a>> {
     let mut connect_frame = Frame::connect(client_tx_ms, client_rx_ms);
     connect_frame.headers.push(
       Header::encode_key_value("login", login)

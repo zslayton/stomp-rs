@@ -3,13 +3,13 @@ use std::io::IoResult;
 use header::Header;
 use session::Session;
 
-pub struct Transaction<'a> {
+pub struct Transaction<'a, 'b: 'a> {
   pub id: String, 
-  pub session: &'a mut Session
+  pub session: &'a mut Session<'b>
 }
 
-impl <'a> Transaction<'a> {
-  pub fn new(id: u32, session: &'a mut Session) -> Transaction<'a> {
+impl <'a, 'b> Transaction<'a, 'b> {
+  pub fn new(id: u32, session: &'a mut Session<'b>) -> Transaction<'a, 'b> {
     Transaction {
       id: format!("tx/{}",id),
       session: session,

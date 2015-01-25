@@ -13,7 +13,7 @@ use subscription::AckMode;
 use subscription::AckMode::{Auto, Client, ClientIndividual};
 use subscription::AckOrNack;
 use subscription::AckOrNack::{Ack, Nack};
-use subscription::Subscription;
+use subscription::{Subscription, SubscriptionHandler};
 use frame::Frame;
 use frame::Transmission;
 use frame::Transmission::{HeartBeat, CompleteFrame};
@@ -23,14 +23,14 @@ use header::ReceiptId;
 use header::StompHeaderSet;
 use transaction::Transaction;
 
-pub struct Session {
+pub struct Session <'a> { 
   pub connection : Connection,
   sender: Sender<Frame>,
   receiver: Receiver<Frame>,
   next_transaction_id: u32,
   next_subscription_id: u32,
   next_receipt_id: u32,
-  subscriptions: HashMap<String, Subscription>,
+  subscriptions: HashMap<String, Subscription <'a>>,
   outstanding_receipts: HashSet<String>, 
   receipt_callback: fn(&Frame) -> (), 
   error_callback: fn(&Frame) -> ()
@@ -38,8 +38,8 @@ pub struct Session {
 
 pub static GRACE_PERIOD_MULTIPLIER : f64 = 2.0f64;
 
-impl Session {
-  pub fn new(connection: Connection, tx_heartbeat_ms: u32, rx_heartbeat_ms: u32) -> Session {
+impl <'a> Session <'a> {
+  pub fn new(connection: Connection, tx_heartbeat_ms: u32, rx_heartbeat_ms: u32) -> Session<'a> {
     let reading_stream = connection.tcp_stream.clone();
     let writing_stream = reading_stream.clone();
     let (sender_tx, sender_rx) : (Sender<Frame>, Receiver<Frame>) = channel();
@@ -224,9 +224,9 @@ impl Session {
     Ok(())
   }
 
-  pub fn subscribe(&mut self, topic: &str, ack_mode: AckMode, callback: fn(&Frame)->AckOrNack)-> IoResult<String> {
+  pub fn subscribe<S>(&mut self, topic: &str, ack_mode: AckMode, handler : S)-> IoResult<String> where S : SubscriptionHandler + 'a {
     let next_id = self.generate_subscription_id();
-    let sub = Subscription::new(next_id, topic, ack_mode, callback);
+    let sub = Subscription::new(next_id, topic, ack_mode, handler);
     let subscribe_frame = Frame::subscribe(sub.id.as_slice(), sub.topic.as_slice(), ack_mode);
     debug!("Sending frame:\n{}", subscribe_frame);
     self.send(subscribe_frame);
@@ -248,7 +248,7 @@ impl Session {
     Ok(self.send(disconnect_frame))
   }
 
-  pub fn begin_transaction<'a>(&'a mut self) -> IoResult<Transaction<'a>> {
+  pub fn begin_transaction<'b>(&'b mut self) -> IoResult<Transaction<'b, 'a>> {
     let mut tx = Transaction::new(self.generate_transaction_id(), self);
     let _ = try!(tx.begin());
     Ok(tx)
@@ -271,7 +271,7 @@ impl Session {
     };
  
     let ack_mode : AckMode;
-    let callback : fn(&Frame) -> AckOrNack;
+    let callback_result : AckOrNack; 
     { // This extra scope is required to free up `frame` and `subscription`
       // following a borrow.
       let header::Subscription(sub_id) = 
@@ -279,17 +279,15 @@ impl Session {
         .get_subscription()
         .expect("Frame did not contain a subscription header.");
 
-      let (a, c) = 
+      let subscription = 
          self.subscriptions
-         .get(sub_id)
-         .map(|sub| (sub.ack_mode, sub.callback))
+         .get_mut(sub_id)
          .expect("Received a message for an unknown subscription.");
-      ack_mode = a;
-      callback = c;
+      ack_mode = subscription.ack_mode;
+      callback_result = (*subscription.handler).on_message(&frame);
     }
 
     debug!("Executing.");
-    let callback_result : AckOrNack = (callback)(&frame);
     match ack_mode {
       Auto => {
         debug!("Auto ack, no frame sent.");
