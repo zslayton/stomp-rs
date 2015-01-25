@@ -18,10 +18,21 @@ The APIs for `stomp-rs` are not yet stable and are likely to fluctuate before v1
 ```rust
 extern crate stomp;
 use stomp::frame::Frame;
-use stomp::subscription::AckOrNack;
-use stomp::subscription::AckOrNack::Ack;
+use stomp::subscription::AckOrNack::{self, Ack};
 use stomp::subscription::AckMode::Client;
+use stomp::subscription::MessageHandler;
 
+struct TestSubscription {
+  message_count : u64
+}
+
+impl MessageHandler for TestSubscription {
+  fn on_message(&mut self, frame: &Frame) -> AckOrNack {
+    self.message_count += 1;
+    println!("Received message #{}:\n{}", self.message_count, frame);
+    Ack
+  }
+}
 
 fn main() {
   let mut session = match stomp::connect("127.0.0.1", 61613) {
@@ -29,14 +40,8 @@ fn main() {
     Err(error) => panic!("Could not connect to the server: {}", error)
   };
   
-  // The callback system will switch to unboxed closures when that language feature is available
-  fn on_message(frame: &Frame) -> AckOrNack {
-    println!("Received a message:\n{}", frame);
-    Ack
-  }
-  
   let topic = "/topic/messages";
-  session.subscribe(topic, Client, on_message); // 'client' acknowledgement mode
+  session.subscribe(topic, Client, TestSubscription{message_count: 0u64}); // 'client' acknowledgement mode
   
   // Send arbitrary bytes with a specified MIME type
   session.send_bytes(topic, "text/plain", "Animal".as_bytes());
