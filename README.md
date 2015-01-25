@@ -22,11 +22,11 @@ use stomp::subscription::AckOrNack::{self, Ack};
 use stomp::subscription::AckMode::Client;
 use stomp::subscription::MessageHandler;
 
-struct TestSubscription {
+struct ExampleMessageHandler {
   message_count : u64
 }
 
-impl MessageHandler for TestSubscription {
+impl MessageHandler for ExampleMessageHandler {
   fn on_message(&mut self, frame: &Frame) -> AckOrNack {
     self.message_count += 1;
     println!("Received message #{}:\n{}", self.message_count, frame);
@@ -41,7 +41,8 @@ fn main() {
   };
   
   let topic = "/topic/messages";
-  session.subscribe(topic, Client, TestSubscription{message_count: 0u64}); // 'client' acknowledgement mode
+  let message_handler = ExampleMessageHandler{message_count: 0u64};
+  session.subscribe(topic, Client, message_handler); // 'client' acknowledgement mode
   
   // Send arbitrary bytes with a specified MIME type
   session.send_bytes(topic, "text/plain", "Animal".as_bytes());
