@@ -112,7 +112,7 @@ name = "stomp_test"
 
 [dependencies.stomp]
 
-git = "https://github.com/zslayton/stomp-rs.git"
+stomp = "*"
 ```
 
 keywords: `Stomp`, `Rust`, `rust-lang`, `rustlang`, `cargo`, `ActiveMQ`, `RabbitMQ`, `Message Queue`, `MQ`
