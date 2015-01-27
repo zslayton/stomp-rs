@@ -47,9 +47,11 @@ impl <'a> Subscription <'a> {
   }
 }
 
-pub trait ToMessageHandler{
-  fn to_message_handler<'a>(self) -> Box<MessageHandler + 'a>;
+pub trait ToMessageHandler <'a> {
+  fn to_message_handler(self) -> Box<MessageHandler + 'a>;
 }
+
+// Support for Sender<T> in subscriptions
 
 struct SendingMessageHandler {
   sender: Sender<Frame>
@@ -68,8 +70,27 @@ impl MessageHandler for SendingMessageHandler {
   }
 }
 
-impl ToMessageHandler for Sender<Frame> {
-  fn to_message_handler<'a>(self) -> Box<MessageHandler + 'a> {
+impl <'a> ToMessageHandler<'a> for Sender<Frame> {
+  fn to_message_handler(self) -> Box<MessageHandler + 'a> {
     Box::new(SendingMessageHandler{sender : self}) as Box<MessageHandler>
+  }
+}
+
+// Support for closures in subscriptions
+
+struct ClosureMessageHandler <F> where F : FnMut(&Frame) -> AckOrNack {
+  closure: F
+}
+
+impl <F> MessageHandler for ClosureMessageHandler <F> where F : FnMut(&Frame) -> AckOrNack {
+  fn on_message(&mut self, frame: &Frame) -> AckOrNack {
+    debug!("Passing frame to closure...");
+    (self.closure)(frame)    
+  }
+}
+
+impl <'a, F> ToMessageHandler<'a> for F where F : FnMut(&Frame) -> AckOrNack + 'a {
+  fn to_message_handler(self) -> Box<MessageHandler + 'a> {
+    Box::new(ClosureMessageHandler{closure : self}) as Box<MessageHandler>
   }
 }

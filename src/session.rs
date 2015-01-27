@@ -224,7 +224,7 @@ impl <'a> Session <'a> {
     Ok(())
   }
 
-  pub fn subscribe<T>(&mut self, topic: &str, ack_mode: AckMode, handler_convertible: T)-> IoResult<String> where T : ToMessageHandler + 'a {
+  pub fn subscribe<T>(&mut self, topic: &str, ack_mode: AckMode, handler_convertible: T)-> IoResult<String> where T : ToMessageHandler<'a> + 'a {
     let message_handler : Box<MessageHandler> = handler_convertible.to_message_handler();
     let next_id = self.generate_subscription_id();
     let sub = Subscription::new(next_id, topic, ack_mode, message_handler);
