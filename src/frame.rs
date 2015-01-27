@@ -131,25 +131,25 @@ impl Frame {
   }
 
   pub fn connect(tx_heartbeat_ms: u32, rx_heartbeat_ms: u32) -> Frame {
-    let mut header_list : HeaderList = HeaderList::with_capacity(2);
-    header_list.push(Header::encode_key_value("accept-version","1.2"));
-    header_list.push(Header::encode_key_value("heart-beat",format!("{},{}", tx_heartbeat_ms, rx_heartbeat_ms).as_slice()));
-    header_list.push(Header::encode_key_value("content-length","0"));
-    
+    let heart_beat = format!("{},{}", tx_heartbeat_ms, rx_heartbeat_ms);
     let connect_frame = Frame {
        command : "CONNECT".to_string(),
-       headers : header_list,
+       headers : header_list![
+         "accept-version" => "1.2",
+         "heart-beat" => heart_beat.as_slice(),
+         "content-length" => "0"
+       ],
        body : Vec::new() 
     };
     connect_frame
   }
 
   pub fn disconnect() -> Frame {
-    let mut header_list : HeaderList = HeaderList::with_capacity(1);
-    header_list.push(Header::encode_key_value("receipt","msg/disconnect"));
     let disconnect_frame = Frame {
        command : "DISCONNECT".to_string(),
-       headers : header_list,
+       headers : header_list![
+         "receipt" => "msg/disconnect"
+       ],
        body : Vec::new() 
     };
     disconnect_frame
@@ -157,93 +157,92 @@ impl Frame {
 
 
   pub fn subscribe(subscription_id: &str, topic: &str, ack_mode: AckMode) -> Frame {
-    let mut header_list : HeaderList = HeaderList::with_capacity(3);
-    header_list.push(Header::encode_key_value("destination", topic));
-    header_list.push(Header::encode_key_value("id", subscription_id));
-    header_list.push(Header::encode_key_value("ack", ack_mode.as_text()));
-
     let subscribe_frame = Frame {
       command : "SUBSCRIBE".to_string(),
-      headers : header_list,
+      headers : header_list![
+        "destination" => topic,
+        "id" => subscription_id,
+        "ack" => ack_mode.as_text()
+      ],
       body : Vec::new()
     };
     subscribe_frame
   }
 
   pub fn unsubscribe(subscription_id: &str) -> Frame {
-    let mut header_list : HeaderList = HeaderList::with_capacity(1);
-    header_list.push(Header::encode_key_value("id", subscription_id));
     let unsubscribe_frame = Frame {
       command : "UNSUBSCRIBE".to_string(),
-      headers : header_list,
+      headers : header_list![
+        "id" => subscription_id
+      ],
       body : Vec::new()
     };
     unsubscribe_frame
   }
 
   pub fn ack(ack_id: &str) -> Frame {
-    let mut header_list : HeaderList = HeaderList::with_capacity(1);
-    header_list.push(Header::encode_key_value("id", ack_id));
     let ack_frame = Frame {
       command : "ACK".to_string(),
-      headers : header_list,
+      headers : header_list![
+        "id" => ack_id
+      ],
       body : Vec::new()
     };
     ack_frame
   }
 
   pub fn nack(message_id: &str) -> Frame {
-    let mut header_list : HeaderList = HeaderList::with_capacity(1);
-    header_list.push(Header::encode_key_value("id", message_id));
     let nack_frame= Frame {
       command : "NACK".to_string(),
-      headers : header_list,
+      headers : header_list![
+        "id" => message_id
+      ],
       body : Vec::new()
     };
     nack_frame
   }
 
   pub fn send(topic: &str, mime_type: &str, body: &[u8]) -> Frame {
-    let mut header_list : HeaderList = HeaderList::with_capacity(3+1);
-    header_list.push(Header::encode_key_value("destination", topic));
-    header_list.push(Header::encode_key_value("content-length", body.len().to_string().as_slice()));
-    header_list.push(Header::encode_key_value("content-type", mime_type));
     let send_frame = Frame {
       command : "SEND".to_string(),
-      headers : header_list,
+      headers : header_list![
+        "destination" => topic,
+        "content-length" => body.len().to_string().as_slice(),
+        "content-type" => mime_type
+      ],
       body : body.to_vec()
     };
     send_frame
   }
 
   pub fn begin(transaction_id: &str) -> Frame {
-    let mut header_list : HeaderList = HeaderList::with_capacity(1);
-    header_list.push(Header::encode_key_value("transaction", transaction_id));
     let begin_frame = Frame {
       command : "BEGIN".to_string(),
-      headers : header_list,
+      headers : header_list![
+        "transaction" => transaction_id
+      ],
       body : Vec::new()
     };
     begin_frame 
   }
 
   pub fn abort(transaction_id: &str) -> Frame {
-    let mut header_list : HeaderList = HeaderList::with_capacity(1);
-    header_list.push(Header::encode_key_value("transaction", transaction_id));
     let abort_frame = Frame {
       command : "ABORT".to_string(),
-      headers : header_list,
+      headers : header_list![
+        "transaction" => transaction_id
+      ],
       body : Vec::new()
     };
     abort_frame 
   }
 
   pub fn commit(transaction_id: &str) -> Frame {
-    let mut header_list : HeaderList = HeaderList::with_capacity(1);
-    header_list.push(Header::encode_key_value("transaction", transaction_id));
     let commit_frame = Frame {
       command : "COMMIT".to_string(),
-      headers : header_list,
+      headers : header_list![
+        "transaction" => transaction_id
+      ],
       body : Vec::new()
     };
     commit_frame 

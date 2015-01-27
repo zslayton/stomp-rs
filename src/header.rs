@@ -28,7 +28,6 @@ impl HeaderList {
   pub fn iter<'a>(&'a self) -> Iter<'a, Header> {
     self.headers.iter()
   }
-
 }
 
 #[derive(Clone)]
@@ -323,5 +322,11 @@ macro_rules! header_list [
     let mut header_list = HeaderList::new();
     $(header_list.push($header);)*
     header_list
+  });
+  ($($key:expr => $value: expr), *) => ({
+    let mut header_list = HeaderList::new();
+    $(header_list.push(Header::encode_key_value($key, $value));)*
+    header_list
   })
+
 ];
