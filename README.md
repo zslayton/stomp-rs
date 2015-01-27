@@ -22,20 +22,6 @@ use stomp::subscription::AckOrNack::{self, Ack};
 use stomp::subscription::AckMode::Client;
 use stomp::subscription::MessageHandler;
 
-// Create a struct to hold any state you'd like manage
-struct ExampleMessageHandler {
-  message_count : u64
-}
-
-// Implement the `MessageHandler` trait for your struct
-impl MessageHandler for ExampleMessageHandler {
-  fn on_message(&mut self, frame: &Frame) -> AckOrNack {
-    self.message_count += 1;
-    println!("Received message #{}:\n{}", self.message_count, frame);
-    Ack
-  }
-}
-
 fn main() {
   let mut session = match stomp::connect("127.0.0.1", 61613) {
     Ok(session)  => session,
@@ -43,8 +29,12 @@ fn main() {
   };
   
   let topic = "/topic/messages";
-  let message_handler = ExampleMessageHandler{message_count: 0u64};
-  session.subscribe(topic, Client, message_handler); // 'client' acknowledgement mode
+  let mut message_count : u64 = 0;
+  session.subscribe(topic, Client, |&mut: frame: &Frame|{ // 'client' acknowledgement mode
+    message_count += 1;
+    println!("Received message #{}:\n{}", message_count, frame);
+    Ack
+  });
   
   // Send arbitrary bytes with a specified MIME type
   session.send_bytes(topic, "text/plain", "Animal".as_bytes());
