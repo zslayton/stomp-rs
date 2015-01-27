@@ -6,6 +6,7 @@ use collections::slice::Iter;
 // Ideally this would be a simple typedef. However:
 // See Rust bug #11047: https://github.com/mozilla/rust/issues/11047
 // Cannot call static methods (`with_capacity`) on type aliases (`HeaderList`)
+#[derive(Clone)]
 pub struct HeaderList {
   pub headers: Vec<Header>
 }
@@ -30,6 +31,7 @@ impl HeaderList {
 
 }
 
+#[derive(Clone)]
 pub struct Header {
   buffer : String,
   delimiter_index : u32

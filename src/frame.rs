@@ -14,6 +14,7 @@ use std::fmt;
 use std::fmt::Formatter;
 use std::fmt::Result;
 
+#[derive(Clone)]
 pub struct Frame {
   pub command : String,
   pub headers : HeaderList, 
