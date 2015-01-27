@@ -34,7 +34,7 @@ impl fmt::Display for Frame {
 
 impl Frame {
 
-  pub fn character_count(&self) -> usize {
+  pub fn count_bytes(&self) -> usize {
      let mut space_required : usize = 0;
     // Add one to space calculations to make room for '\n'
     space_required += self.command.len() + 1;
@@ -48,7 +48,7 @@ impl Frame {
   }
 
   pub fn to_str(&self) -> String {
-    let space_required = self.character_count();
+    let space_required = self.count_bytes();
     let mut frame_string = String::with_capacity(space_required);
     frame_string.push_str(self.command.as_slice());
     frame_string.push_str("\n");

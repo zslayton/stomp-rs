@@ -218,7 +218,6 @@ impl <'a> Session <'a> {
     send_frame.headers.push(
       Header::encode_key_value("receipt", receipt_id.as_slice())
     );
-    //try!(send_frame.write(&mut self.connection.sender));
     self.send(send_frame);
     self.outstanding_receipts.insert(receipt_id);
     Ok(())
@@ -231,7 +230,6 @@ impl <'a> Session <'a> {
     let subscribe_frame = Frame::subscribe(sub.id.as_slice(), sub.topic.as_slice(), ack_mode);
     debug!("Sending frame:\n{}", subscribe_frame);
     self.send(subscribe_frame);
-    //try!(subscribe_frame.write(&mut self.connection.sender));
     debug!("Registering callback for subscription id: {}", sub.id);
     let id_to_return = sub.id.to_string();
     self.subscriptions.insert(sub.id.to_string(), sub);
@@ -273,18 +271,25 @@ impl <'a> Session <'a> {
  
     let ack_mode : AckMode;
     let callback_result : AckOrNack; 
-    { // This extra scope is required to free up `frame` and `subscription`
+    { // This extra scope is required to free up `frame` and `self.subscriptions`
       // following a borrow.
+
+      // Find the subscription ID on the frame that was received
       let header::Subscription(sub_id) = 
         frame.headers
         .get_subscription()
         .expect("Frame did not contain a subscription header.");
 
+      // Look up the appropriate Subscription object
       let subscription = 
          self.subscriptions
          .get_mut(sub_id)
          .expect("Received a message for an unknown subscription.");
+
+      // Take note of the ack_mode used by this Subscription
       ack_mode = subscription.ack_mode;
+      // Invoke the callback in the Subscription, providing the frame
+      // Take note of whether this frame should be ACKed or NACKed
       callback_result = (*subscription.handler).on_message(&frame);
     }
 
