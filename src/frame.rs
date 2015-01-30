@@ -3,11 +3,11 @@ use header::Header;
 use header::ContentLength;
 use header::StompHeaderSet;
 use subscription::AckMode;
-use std::io::IoResult;
-use std::io::IoError;
-use std::io::InvalidInput;
-use std::io::BufferedReader;
-use std::io::BufferedWriter;
+use std::old_io::IoResult;
+use std::old_io::IoError;
+use std::old_io::InvalidInput;
+use std::old_io::BufferedReader;
+use std::old_io::BufferedWriter;
 use std::str::from_utf8;
 
 use std::fmt;
@@ -74,8 +74,8 @@ impl Frame {
       try!(stream.write_str("\n"));
     }
     try!(stream.write_str("\n"));
-    try!(stream.write(self.body.as_slice()));
-    try!(stream.write(&[0]));
+    try!(stream.write_all(self.body.as_slice()));
+    try!(stream.write_all(&[0]));
     try!(stream.flush());
     debug!("write() complete.");
     Ok(())

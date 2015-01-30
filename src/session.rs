@@ -2,12 +2,14 @@ use std::thread::Thread;
 use std::collections::hash_set::HashSet;
 use std::collections::hash_map::HashMap;
 use std::time::Duration;
-use std::io::BufferedReader;
-use std::io::BufferedWriter;
+use std::old_io::BufferedReader;
+use std::old_io::BufferedWriter;
 use std::sync::mpsc::{Sender, Receiver, channel};
-use std::io::Timer;
-use std::io::IoResult;
-use std::io::net::tcp::TcpStream;
+use std::old_io::Timer;
+use std::old_io::IoResult;
+use std::old_io::IoError;
+use std::old_io::IoErrorKind::{ConnectionFailed};
+use std::old_io::net::tcp::TcpStream;
 use connection::Connection;
 use subscription::AckMode;
 use subscription::AckMode::{Auto, Client, ClientIndividual};
@@ -205,11 +207,11 @@ impl <'a> Session <'a> {
  
   pub fn send_bytes(&mut self, topic: &str, mime_type: &str, body: &[u8]) -> IoResult<()> {
     let send_frame = Frame::send(topic, mime_type, body);
-    Ok(self.send(send_frame))
+    self.send(send_frame)
   }
 
   pub fn send_text_with_receipt(&mut self, topic: &str, body: &str) -> IoResult<()> {
-    Ok(try!(self.send_bytes_with_receipt(topic, "text/plain", body.as_bytes())))
+    self.send_bytes_with_receipt(topic, "text/plain", body.as_bytes())
   }
 
   pub fn send_bytes_with_receipt(&mut self, topic: &str, mime_type: &str, body: &[u8]) -> IoResult<()> {
@@ -218,7 +220,7 @@ impl <'a> Session <'a> {
     send_frame.headers.push(
       Header::encode_key_value("receipt", receipt_id.as_slice())
     );
-    self.send(send_frame);
+    try!(self.send(send_frame));
     self.outstanding_receipts.insert(receipt_id);
     Ok(())
   }
@@ -229,7 +231,7 @@ impl <'a> Session <'a> {
     let sub = Subscription::new(next_id, topic, ack_mode, message_handler);
     let subscribe_frame = Frame::subscribe(sub.id.as_slice(), sub.topic.as_slice(), ack_mode);
     debug!("Sending frame:\n{}", subscribe_frame);
-    self.send(subscribe_frame);
+    try!(self.send(subscribe_frame));
     debug!("Registering callback for subscription id: {}", sub.id);
     let id_to_return = sub.id.to_string();
     self.subscriptions.insert(sub.id.to_string(), sub);
@@ -239,12 +241,12 @@ impl <'a> Session <'a> {
   pub fn unsubscribe(&mut self, sub_id: &str) -> IoResult<()> {
      let _ = self.subscriptions.remove(sub_id);
      let unsubscribe_frame = Frame::unsubscribe(sub_id.as_slice());
-     Ok(self.send(unsubscribe_frame))
+     self.send(unsubscribe_frame)
   }
 
   pub fn disconnect(&mut self) -> IoResult<()> {
     let disconnect_frame = Frame::disconnect();
-    Ok(self.send(disconnect_frame))
+    self.send(disconnect_frame)
   }
 
   pub fn begin_transaction<'b>(&'b mut self) -> IoResult<Transaction<'b, 'a>> {
@@ -253,12 +255,26 @@ impl <'a> Session <'a> {
     Ok(tx)
   }
 
-  pub fn send(&self, frame: Frame) {
-    let _ = self.sender.send(frame);
+  pub fn send(&self, frame: Frame) -> IoResult<()> {
+    match self.sender.send(frame) {
+      Ok(_) => Ok(()),
+      Err(_) => Err(IoError {
+        kind: ConnectionFailed,
+        desc: "The connection to the server was lost.",
+        detail: None 
+      })
+    }
   }
 
-  pub fn receive(&self) -> Frame {
-    self.receiver.recv().unwrap()
+  pub fn receive(&self) -> IoResult<Frame> {
+    match self.receiver.recv() {
+      Ok(frame) => Ok(frame),
+      Err(_) => Err(IoError {
+        kind: ConnectionFailed,
+        desc: "Could not receive frame: the connection to the server was lost.",
+        detail: None
+      })
+    }
   }
 
   pub fn dispatch(&mut self, frame: Frame) {
@@ -313,17 +329,17 @@ impl <'a> Session <'a> {
 
   fn acknowledge_frame(&mut self, ack_id: &str) -> IoResult<()> {
     let ack_frame = Frame::ack(ack_id);
-    Ok(self.send(ack_frame))
+    self.send(ack_frame)
   }
 
   fn negatively_acknowledge_frame(&mut self, ack_id: &str) -> IoResult<()>{
     let nack_frame = Frame::nack(ack_id);
-    Ok(self.send(nack_frame))
+    self.send(nack_frame)
   }
 
-  pub fn listen(&mut self) {
+  pub fn listen(&mut self) -> IoResult<()> {
     loop {
-      let frame = self.receive();
+      let frame = try!(self.receive());
       debug!("Received '{}' frame, dispatching.", frame.command);
       self.dispatch(frame)
     }

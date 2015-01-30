@@ -1,13 +1,16 @@
 #![crate_name = "stomp"]
 #![crate_type = "lib"]
 
-#![allow(unstable)]
+#![feature(collections)]
+#![feature(core)]
+#![feature(std_misc)]
+#![feature(io)]
 
 #[macro_use]
 extern crate log;
 extern crate collections;
 
-use std::io::IoResult;
+use std::old_io::IoResult;
 use session::Session;
 use connection::Connection;
 
