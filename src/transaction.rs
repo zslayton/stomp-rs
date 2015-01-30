@@ -33,12 +33,12 @@ impl <'a, 'b> Transaction<'a, 'b> {
     self.session.send(begin_frame)
   }
 
-  pub fn commit(&mut self) -> IoResult<()> {
+  pub fn commit(self) -> IoResult<()> {
     let commit_frame = Frame::commit(self.id.as_slice());
     self.session.send(commit_frame)
   }
 
-  pub fn abort(&mut self) -> IoResult<()> {
+  pub fn abort(self) -> IoResult<()> {
     let abort_frame = Frame::abort(self.id.as_slice());
     self.session.send(abort_frame)
   }
