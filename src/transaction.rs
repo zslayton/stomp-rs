@@ -21,25 +21,25 @@ impl <'a, 'b> Transaction<'a, 'b> {
     send_frame.headers.push(
       Header::encode_key_value("transaction", self.id.as_slice())
     );
-    Ok(self.session.send(send_frame))
+    self.session.send(send_frame)
   }
 
   pub fn send_text(&mut self, topic: &str, body: &str) -> IoResult<()> {
-    Ok(try!(self.send_bytes(topic, "text/plain", body.as_bytes())))
+    self.send_bytes(topic, "text/plain", body.as_bytes())
   }
 
   pub fn begin(&mut self) -> IoResult<()> {
     let begin_frame = Frame::begin(self.id.as_slice());
-    Ok(self.session.send(begin_frame))
+    self.session.send(begin_frame)
   }
 
   pub fn commit(&mut self) -> IoResult<()> {
     let commit_frame = Frame::commit(self.id.as_slice());
-    Ok(self.session.send(commit_frame))
+    self.session.send(commit_frame)
   }
 
   pub fn abort(&mut self) -> IoResult<()> {
     let abort_frame = Frame::abort(self.id.as_slice());
-    Ok(self.session.send(abort_frame))
+    self.session.send(abort_frame)
   }
 }
