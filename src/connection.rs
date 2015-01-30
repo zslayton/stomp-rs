@@ -1,10 +1,10 @@
-use std::io::net::tcp::TcpStream;
-use std::io::BufferedReader;
-use std::io::BufferedWriter;
+use std::old_io::net::tcp::TcpStream;
+use std::old_io::BufferedReader;
+use std::old_io::BufferedWriter;
 use frame::Transmission::{HeartBeat, CompleteFrame};
-use std::io::IoResult;
-use std::io::IoError;
-use std::io::InvalidInput;
+use std::old_io::IoResult;
+use std::old_io::IoError;
+use std::old_io::InvalidInput;
 use std::str::from_utf8;
 use frame::Frame;
 use session::Session;

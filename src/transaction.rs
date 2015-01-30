@@ -1,5 +1,5 @@
 use frame::Frame;
-use std::io::IoResult;
+use std::old_io::IoResult;
 use header::Header;
 use session::Session;
 

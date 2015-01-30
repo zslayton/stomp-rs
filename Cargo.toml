@@ -11,3 +11,6 @@ license = "MIT"
 
 [lib]
 name = "stomp"
+
+[dependencies.log]
+log = "*"
