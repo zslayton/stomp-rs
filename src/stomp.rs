@@ -38,3 +38,5 @@ pub mod frame;
 pub mod session;
 pub mod subscription;
 pub mod transaction;
+pub mod message_builder;
+pub mod option_setter;

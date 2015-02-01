@@ -3,3 +3,6 @@
 name = "send_and_subscribe"
 version = "0.0.1"
 authors = ["Zack Slayton <zack@xtify.com>"]
+
+[dependencies.stomp]
+stomp = "*"

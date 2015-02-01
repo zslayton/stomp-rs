@@ -37,6 +37,10 @@ pub struct Header {
 }
 
 impl Header {
+  pub fn new(key: &str, value: &str) -> Header {
+    Header::encode_key_value(key, value)
+  }
+
   fn from_string(raw_string: &str) -> Option<Header> {
     let delimiter_index = match raw_string.find(':') {
       Some(index) => index,

@@ -51,13 +51,19 @@ pub trait ToMessageHandler <'a> {
   fn to_message_handler(self) -> Box<MessageHandler + 'a>;
 }
 
+impl <'a, T: 'a> ToMessageHandler <'a> for T where T: MessageHandler {
+  fn to_message_handler(self) -> Box<MessageHandler + 'a> {
+    Box::new(self) as Box<MessageHandler>
+  }
+} 
+
 // Support for Sender<T> in subscriptions
 
-struct SendingMessageHandler {
+struct SenderMessageHandler {
   sender: Sender<Frame>
 }
 
-impl MessageHandler for SendingMessageHandler {
+impl MessageHandler for SenderMessageHandler {
   fn on_message(&mut self, frame: &Frame) -> AckOrNack {
     debug!("Sending frame...");
     match self.sender.send(frame.clone()) {
@@ -72,25 +78,13 @@ impl MessageHandler for SendingMessageHandler {
 
 impl <'a> ToMessageHandler<'a> for Sender<Frame> {
   fn to_message_handler(self) -> Box<MessageHandler + 'a> {
-    Box::new(SendingMessageHandler{sender : self}) as Box<MessageHandler>
+    Box::new(SenderMessageHandler{sender : self}) as Box<MessageHandler>
   }
 }
 
-// Support for closures in subscriptions
-
-struct ClosureMessageHandler <F> where F : FnMut(&Frame) -> AckOrNack {
-  closure: F
-}
-
-impl <F> MessageHandler for ClosureMessageHandler <F> where F : FnMut(&Frame) -> AckOrNack {
+impl <F> MessageHandler for F where F : FnMut(&Frame) -> AckOrNack {
   fn on_message(&mut self, frame: &Frame) -> AckOrNack {
     debug!("Passing frame to closure...");
-    (self.closure)(frame)    
-  }
-}
-
-impl <'a, F> ToMessageHandler<'a> for F where F : FnMut(&Frame) -> AckOrNack + 'a {
-  fn to_message_handler(self) -> Box<MessageHandler + 'a> {
-    Box::new(ClosureMessageHandler{closure : self}) as Box<MessageHandler>
+    self(frame)    
   }
 }

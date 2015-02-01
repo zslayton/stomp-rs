@@ -24,6 +24,7 @@ use header::Header;
 use header::ReceiptId;
 use header::StompHeaderSet;
 use transaction::Transaction;
+use message_builder::MessageBuilder;
 
 pub struct Session <'a> { 
   pub connection : Connection,
@@ -201,11 +202,19 @@ impl <'a> Session <'a> {
     id
   }
 
-  pub fn send_text(&mut self, topic: &str, body: &str) -> IoResult<()> {
-    Ok(try!(self.send_bytes(topic, "text/plain", body.as_bytes())))
+  pub fn message(&mut self, destination: &str, mime_type: &str, body: &[u8]) -> MessageBuilder {
+    let send_frame = Frame::send(destination, mime_type, body);
+    MessageBuilder {
+     session: self,
+     frame: send_frame
+    }
+  }
+
+  pub fn send_text(&self, topic: &str, body: &str) -> IoResult<()> {
+    self.send_bytes(topic, "text/plain", body.as_bytes())
   }
  
-  pub fn send_bytes(&mut self, topic: &str, mime_type: &str, body: &[u8]) -> IoResult<()> {
+  pub fn send_bytes(&self, topic: &str, mime_type: &str, body: &[u8]) -> IoResult<()> {
     let send_frame = Frame::send(topic, mime_type, body);
     self.send(send_frame)
   }
@@ -225,7 +234,7 @@ impl <'a> Session <'a> {
     Ok(())
   }
 
-  pub fn subscribe<T>(&mut self, topic: &str, ack_mode: AckMode, handler_convertible: T)-> IoResult<String> where T : ToMessageHandler<'a> + 'a {
+  pub fn subscribe<'b : 'a, T>(&mut self, topic: &str, ack_mode: AckMode, handler_convertible: T)-> IoResult<String> where T : ToMessageHandler<'b> + 'b {
     let message_handler : Box<MessageHandler> = handler_convertible.to_message_handler();
     let next_id = self.generate_subscription_id();
     let sub = Subscription::new(next_id, topic, ack_mode, message_handler);
