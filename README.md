@@ -24,23 +24,20 @@ use stomp::subscription::MessageHandler;
 
 fn main() {
   
-  // Due to https://github.com/rust-lang/rust/pull/21657,
-  // closure callbacks must be declared before 'session' is created.
+  let destination = "/topic/messages";
+  let acknowledge_mode = Client;
   let mut message_count : u64 = 0;
-  let on_message = |&mut: frame: &Frame| {
-    message_count += 1;
-    println!("Received message #{}:\n{}", message_count, frame);
-    Ack
-  }
 
   let mut session = match stomp::connect("127.0.0.1", 61613) {
     Ok(session)  => session,
     Err(error) => panic!("Could not connect to the server: {}", error)
   };
   
-  let destination = "/topic/messages";
-  let acknowledge_mode = Client;
-  session.subscribe(destination, acknowledge_mode, on_message);
+  session.subscribe(destination, acknowledge_mode, |&mut: frame: &Frame| {
+    message_count += 1;
+    println!("Received message #{}:\n{}", message_count, frame);
+    Ack
+  });
   
   // Send arbitrary bytes with a specified MIME type
   session.send_bytes(topic, "text/plain", "Animal".as_bytes());
