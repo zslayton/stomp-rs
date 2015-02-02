@@ -18,20 +18,25 @@ The APIs for `stomp-rs` are not yet stable and are likely to fluctuate before v1
 ```rust
 extern crate stomp;
 use stomp::frame::Frame;
-use stomp::subscription::AckOrNack::{self, Ack};
+use stomp::header::Header;
+use stomp::subscription::AckOrNack::Ack;
 use stomp::subscription::AckMode::Client;
-use stomp::subscription::MessageHandler;
+use stomp::connection::{HeartBeat, Credentials};
 
 fn main() {
   
-  let destination = "/topic/messages";
+ let destination = "/topic/messages";
   let acknowledge_mode = Client;
-  let mut message_count : u64 = 0;
+  let mut message_count: u64 = 0;
 
-  let mut session = match stomp::connect("127.0.0.1", 61613) {
-    Ok(session)  => session,
-    Err(error) => panic!("Could not connect to the server: {}", error)
-  };
+  let mut session = match stomp::session("127.0.0.1", 61613)
+    .with(Header::new("custom-client-id", "hmspna4"))
+    .with(HeartBeat(5000, 2000))
+    .with(Credentials("sullivan", "m1k4d0"))
+    .start() {
+      Ok(session) => session,
+      Err(error)  => panic!("Could not connect to the server: {}", error)
+   };
   
   session.subscribe(destination, acknowledge_mode, |&mut: frame: &Frame| {
     message_count += 1;
@@ -45,6 +50,12 @@ fn main() {
   // Send UTF-8 text with an assumed MIME type of 'text/plain'
   session.send_text(topic, "Vegetable");
   session.send_text(topic, "Mineral");
+  
+  // Send arbitrary bytes with a specified MIME type and custom headers
+  session.message(destination, "text/plain", "Hypoteneuse".as_bytes())
+    .with(Header::new("client-id", "0"))
+    .with(Header::new("persistent", "true"))
+    .send();
   
   session.listen(); // Loops infinitely, awaiting messages
 
