@@ -1,7 +1,7 @@
 extern crate env_logger;
 extern crate stomp;
 use stomp::frame::Frame;
-use stomp::header::Header;
+use stomp::header::{Header, SuppressedHeader};
 use stomp::subscription::AckOrNack::Ack;
 use stomp::subscription::AckMode::Client;
 use stomp::connection::{HeartBeat, Credentials};
@@ -15,6 +15,7 @@ fn main() {
 
   let mut session = match stomp::session("127.0.0.1", 61613)
     .with(Header::new("custom-client-id", "hmspna4"))
+    .with(SuppressedHeader("content-length"))
     .with(HeartBeat(5000, 2000))
     .with(Credentials("sullivan", "m1k4d0"))
     .start() {

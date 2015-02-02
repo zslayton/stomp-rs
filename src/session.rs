@@ -25,6 +25,7 @@ use header::ReceiptId;
 use header::StompHeaderSet;
 use transaction::Transaction;
 use message_builder::MessageBuilder;
+use subscription_builder::SubscriptionBuilder;
 
 pub struct Session <'a> { 
   pub connection : Connection,
@@ -33,7 +34,7 @@ pub struct Session <'a> {
   next_transaction_id: u32,
   next_subscription_id: u32,
   next_receipt_id: u32,
-  subscriptions: HashMap<String, Subscription <'a>>,
+  pub subscriptions: HashMap<String, Subscription <'a>>,
   outstanding_receipts: HashSet<String>, 
   receipt_callback: fn(&Frame) -> (), 
   error_callback: fn(&Frame) -> ()
@@ -232,6 +233,14 @@ impl <'a> Session <'a> {
     try!(self.send(send_frame));
     self.outstanding_receipts.insert(receipt_id);
     Ok(())
+  }
+
+  pub fn subscription<T>(&'a mut self, destination: &str, handler_convertible: T) -> SubscriptionBuilder<'a> where T: ToMessageHandler<'a> {
+    let message_handler : Box<MessageHandler> = handler_convertible.to_message_handler();
+    let next_id = self.generate_subscription_id();
+    let sub = Subscription::new(next_id, destination, AckMode::Auto, message_handler);
+    let subscribe_frame = Frame::subscribe(sub.id.as_slice(), sub.topic.as_slice(), AckMode::Auto);
+    SubscriptionBuilder::new(self, subscribe_frame, sub)
   }
 
   pub fn subscribe<'b : 'a, T>(&mut self, topic: &str, ack_mode: AckMode, handler_convertible: T)-> IoResult<String> where T : ToMessageHandler<'b> + 'b {

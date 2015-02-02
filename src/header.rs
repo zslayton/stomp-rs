@@ -32,7 +32,13 @@ impl HeaderList {
   pub fn concat(&mut self, other_list: &mut HeaderList) {
     self.headers.append(&mut other_list.headers);
   }
+
+  pub fn retain<F>(&mut self, test: F) where F : Fn(&Header)->bool {
+    self.headers.retain(test)
+  }
 }
+
+pub struct SuppressedHeader<'a> (pub &'a str);
 
 #[derive(Clone)]
 pub struct Header {
