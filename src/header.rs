@@ -28,6 +28,10 @@ impl HeaderList {
   pub fn iter<'a>(&'a self) -> Iter<'a, Header> {
     self.headers.iter()
   }
+
+  pub fn concat(&mut self, other_list: &mut HeaderList) {
+    self.headers.append(&mut other_list.headers);
+  }
 }
 
 #[derive(Clone)]
