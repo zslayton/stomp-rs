@@ -25,7 +25,7 @@ use stomp::connection::{HeartBeat, Credentials};
 
 fn main() {
   
- let destination = "/topic/messages";
+  let destination = "/topic/messages";
   let acknowledge_mode = Client;
   let mut message_count: u64 = 0;
 
