@@ -10,7 +10,7 @@ pub struct SessionBuilder<'a> {
   pub port: u16,
   pub credentials: Option<Credentials<'a>>,
   pub heartbeat: HeartBeat,
-  pub custom_headers: HeaderList
+  pub headers: HeaderList
 }
 
 impl <'a> SessionBuilder <'a> {
@@ -20,25 +20,22 @@ impl <'a> SessionBuilder <'a> {
       port: port,
       credentials: None,
       heartbeat: HeartBeat(0,0),
-      custom_headers: HeaderList::new()
+      headers: header_list![ 
+       "host" => host,
+       "accept-version" => "1.2",
+       "content-length" => "0"
+      ] 
     }
   }
 
   #[allow(dead_code)] 
   pub fn start(mut self) -> IoResult<Session<'a>> {
-    // Create our base header list with required and known fields
-    let mut header_list = header_list![
-     "host" => self.host,
-     "accept-version" => "1.2",
-     "content-length" => "0"
-    ];
-
     // Add credentials to the header list if specified
     match self.credentials {
       Some(Credentials(ref login, ref passcode)) => {
         debug!("Using provided credentials: login '{}', passcode '{}'", login, passcode);
-        header_list.push(Header::new("login", login));
-        header_list.push(Header::new("passcode", passcode));
+        self.headers.push(Header::new("login", login));
+        self.headers.push(Header::new("passcode", passcode));
       },
       None => debug!("No credentials supplied.")
     }
@@ -46,13 +43,11 @@ impl <'a> SessionBuilder <'a> {
     let HeartBeat(client_tx_ms, client_rx_ms) = self.heartbeat;
     let heart_beat_string = format!("{},{}", client_tx_ms, client_rx_ms);
     debug!("Using heartbeat: {},{}", client_tx_ms, client_rx_ms);
-    header_list.push(Header::new("heart-beat", heart_beat_string.as_slice()));
-
-    header_list.concat(&mut self.custom_headers); 
+    self.headers.push(Header::new("heart-beat", heart_beat_string.as_slice()));
 
     let connect_frame = Frame {
       command : "CONNECT".to_string(),
-      headers : header_list,
+      headers : self.headers,
       body : Vec::new()
     };
 

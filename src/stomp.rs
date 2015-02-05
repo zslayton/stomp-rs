@@ -24,4 +24,5 @@ pub mod subscription;
 pub mod transaction;
 pub mod message_builder;
 pub mod session_builder;
+pub mod subscription_builder;
 pub mod option_setter;

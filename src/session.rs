@@ -21,10 +21,12 @@ use frame::Transmission;
 use frame::Transmission::{HeartBeat, CompleteFrame};
 use header;
 use header::Header;
+use header::HeaderList;
 use header::ReceiptId;
 use header::StompHeaderSet;
 use transaction::Transaction;
 use message_builder::MessageBuilder;
+use subscription_builder::SubscriptionBuilder;
 
 pub struct Session <'a> { 
   pub connection : Connection,
@@ -33,7 +35,7 @@ pub struct Session <'a> {
   next_transaction_id: u32,
   next_subscription_id: u32,
   next_receipt_id: u32,
-  subscriptions: HashMap<String, Subscription <'a>>,
+  pub subscriptions: HashMap<String, Subscription <'a>>,
   outstanding_receipts: HashSet<String>, 
   receipt_callback: fn(&Frame) -> (), 
   error_callback: fn(&Frame) -> ()
@@ -190,7 +192,7 @@ impl <'a> Session <'a> {
     id
   }
 
-  fn generate_subscription_id(&mut self) -> u32 {
+  pub fn generate_subscription_id(&mut self) -> u32 {
     let id = self.next_subscription_id;
     self.next_subscription_id += 1;
     id
@@ -232,6 +234,17 @@ impl <'a> Session <'a> {
     try!(self.send(send_frame));
     self.outstanding_receipts.insert(receipt_id);
     Ok(())
+  }
+
+  pub fn subscription<'b, 'c: 'a, T>(&'b mut self, destination: &'b str, handler_convertible: T) -> SubscriptionBuilder<'b, 'a, 'c> where T: ToMessageHandler<'c> {
+    let message_handler : Box<MessageHandler> = handler_convertible.to_message_handler();
+    SubscriptionBuilder{
+      session: self,
+      destination: destination,
+      ack_mode: AckMode::Auto,
+      handler: message_handler,
+      headers: HeaderList::new()
+    }
   }
 
   pub fn subscribe<'b : 'a, T>(&mut self, topic: &str, ack_mode: AckMode, handler_convertible: T)-> IoResult<String> where T : ToMessageHandler<'b> + 'b {

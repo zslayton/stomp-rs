@@ -32,7 +32,13 @@ impl HeaderList {
   pub fn concat(&mut self, other_list: &mut HeaderList) {
     self.headers.append(&mut other_list.headers);
   }
+
+  pub fn retain<F>(&mut self, test: F) where F : Fn(&Header)->bool {
+    self.headers.retain(test)
+  }
 }
+
+pub struct SuppressedHeader<'a> (pub &'a str);
 
 #[derive(Clone)]
 pub struct Header {
@@ -213,7 +219,7 @@ impl StompHeaderSet for HeaderList {
       Some(h) => h.get_value(), 
       None => return None
     };
-    let spec_list: Vec<u32> = spec.split(',').filter_map(|str_val| str_val.parse::<u32>()).collect();
+    let spec_list: Vec<u32> = spec.split(',').filter_map(|str_val| str_val.parse::<u32>().ok()).collect();
     match spec_list.as_slice() {
       [x, y] => Some(HeartBeat(x, y)),
       _ => None
@@ -315,7 +321,7 @@ impl StompHeaderSet for HeaderList {
       Some(h) => h.get_value(),
       None => return None
     };
-    match length.parse::<u32>() {
+    match length.parse::<u32>().ok() {
       Some(l) => Some(ContentLength(l)),
       None => None
     }
