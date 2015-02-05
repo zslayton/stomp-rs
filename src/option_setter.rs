@@ -55,14 +55,22 @@ impl <'a> OptionSetter<SessionBuilder<'a>> for SuppressedHeader<'a> {
 
 impl <'a, 'session, 'sub> OptionSetter<SubscriptionBuilder<'a, 'session, 'sub>> for Header {
   fn set_option(self, mut builder: SubscriptionBuilder<'a, 'session, 'sub>) -> SubscriptionBuilder<'a, 'session, 'sub> {
-    builder.frame.headers.push(self);
+    builder.headers.push(self);
+    builder
+  }
+}
+
+impl <'b, 'a, 'session, 'sub> OptionSetter<SubscriptionBuilder<'a, 'session, 'sub>> for SuppressedHeader<'b> {
+  fn set_option(self, mut builder: SubscriptionBuilder<'a, 'session, 'sub>) -> SubscriptionBuilder<'a, 'session, 'sub> {
+    let SuppressedHeader(key) = self;
+    builder.headers.retain(|header| (*header).get_key() != key);
     builder
   }
 }
 
 impl <'a, 'session, 'sub> OptionSetter<SubscriptionBuilder<'a, 'session, 'sub>> for AckMode {
   fn set_option(self, mut builder: SubscriptionBuilder<'a, 'session, 'sub>) -> SubscriptionBuilder<'a, 'session, 'sub> {
-    builder.frame.headers.push(self);
+    builder.ack_mode = self;
     builder
   }
 }

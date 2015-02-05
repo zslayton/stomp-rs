@@ -3,14 +3,13 @@ extern crate stomp;
 use stomp::frame::Frame;
 use stomp::header::{Header, SuppressedHeader};
 use stomp::subscription::AckOrNack::Ack;
-use stomp::subscription::AckMode::Client;
+use stomp::subscription::AckMode;
 use stomp::connection::{HeartBeat, Credentials};
 
 fn main() {
   env_logger::init().unwrap();
 
   let destination = "/topic/messages";
-  let acknowledge_mode = Client;
   let mut message_count: u64 = 0;
 
   let mut session = match stomp::session("127.0.0.1", 61613)
@@ -27,7 +26,10 @@ fn main() {
     message_count += 1;
     println!("Received message #{}:\n{}", message_count, frame);
     Ack
-  }).create();
+  })
+  .with(AckMode::Client)
+  .with(Header::new("custom-subscription-header", "lozenge"))
+  .create();
 
   // Send arbitrary bytes with a specified MIME type
   session.send_bytes(destination, "text/plain", "Animal".as_bytes());
