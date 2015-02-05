@@ -21,7 +21,6 @@ use stomp::frame::Frame;
 use stomp::header::Header;
 use stomp::subscription::AckOrNack::Ack;
 use stomp::subscription::AckMode::Client;
-use stomp::connection::{HeartBeat, Credentials};
 
 fn main() {
   
@@ -29,11 +28,7 @@ fn main() {
   let acknowledge_mode = Client;
   let mut message_count: u64 = 0;
 
-  let mut session = match stomp::session("127.0.0.1", 61613)
-    .with(Header::new("custom-client-id", "hmspna4"))
-    .with(HeartBeat(5000, 2000))
-    .with(Credentials("sullivan", "m1k4d0"))
-    .start() {
+  let mut session = match stomp::session("127.0.0.1", 61613).start() {
       Ok(session) => session,
       Err(error)  => panic!("Could not connect to the server: {}", error)
    };
@@ -51,16 +46,42 @@ fn main() {
   session.send_text(topic, "Vegetable");
   session.send_text(topic, "Mineral");
   
-  // Send arbitrary bytes with a specified MIME type and custom headers
-  session.message(destination, "text/plain", "Hypoteneuse".as_bytes())
-    .with(Header::new("client-id", "0"))
-    .with(Header::new("persistent", "true"))
-    .send();
-  
   session.listen(); // Loops infinitely, awaiting messages
 
   session.disconnect();
 }
+```
+
+### Session Settings
+```rust
+let mut session = match stomp::session("127.0.0.1", 61613)
+  .with(Credentials("sullivan", "m1k4d0"))
+  .with(HeartBeat(5000, 2000))
+  .with(Header::new("custom-client-id", "hmspna4"))
+  .start() {
+      Ok(session) => session,
+      Err(error)  => panic!("Could not connect to the server: {}", error)
+   };
+```
+
+### Message Settings
+```rust
+session.message(destination, "text/plain", "Hypoteneuse".as_bytes())
+  .with(Header::new("persistent", "true"))
+  .with(SuppressedHeader("content-length")
+  .send();
+```
+
+### Subscription Settings
+```rust
+let id = session.subscription(destination, |&mut: frame: &Frame| {
+    message_count += 1;
+    println!("Received message #{}:\n{}", message_count, frame);
+    Ack
+  })
+  .with(AckMode::Client)
+  .with(Header::new("custom-subscription-header", "lozenge"))
+  .create();
 ```
 
 ### Transactions
