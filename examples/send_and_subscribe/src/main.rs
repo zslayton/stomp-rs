@@ -23,11 +23,11 @@ fn main() {
       Err(error)  => panic!("Could not connect to the server: {}", error)
    };
 
-  session.subscribe(destination, acknowledge_mode, |&mut: frame: &Frame| {
+  let sub_id = session.subscription(destination, |&mut: frame: &Frame| {
     message_count += 1;
     println!("Received message #{}:\n{}", message_count, frame);
     Ack
-  });
+  }).create();
 
   // Send arbitrary bytes with a specified MIME type
   session.send_bytes(destination, "text/plain", "Animal".as_bytes());

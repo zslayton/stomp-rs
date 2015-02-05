@@ -219,7 +219,7 @@ impl StompHeaderSet for HeaderList {
       Some(h) => h.get_value(), 
       None => return None
     };
-    let spec_list: Vec<u32> = spec.split(',').filter_map(|str_val| str_val.parse::<u32>()).collect();
+    let spec_list: Vec<u32> = spec.split(',').filter_map(|str_val| str_val.parse::<u32>().ok()).collect();
     match spec_list.as_slice() {
       [x, y] => Some(HeartBeat(x, y)),
       _ => None
@@ -321,7 +321,7 @@ impl StompHeaderSet for HeaderList {
       Some(h) => h.get_value(),
       None => return None
     };
-    match length.parse::<u32>() {
+    match length.parse::<u32>().ok() {
       Some(l) => Some(ContentLength(l)),
       None => None
     }

@@ -2,7 +2,7 @@ use frame::Frame;
 use subscription::AckOrNack::{Ack, Nack};
 use std::sync::mpsc::Sender;
 
-#[derive(Copy)]
+#[derive(Copy,Clone)]
 pub enum AckMode {
   Auto,
   Client,

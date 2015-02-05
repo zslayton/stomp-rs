@@ -235,12 +235,19 @@ impl <'a> Session <'a> {
     Ok(())
   }
 
-  pub fn subscription<T>(&'a mut self, destination: &str, handler_convertible: T) -> SubscriptionBuilder<'a> where T: ToMessageHandler<'a> {
+  pub fn subscription<'b, 'c: 'a, T>(&'b mut self, destination: &str, handler_convertible: T) -> SubscriptionBuilder<'b, 'a, 'c> where T: ToMessageHandler<'c> {
     let message_handler : Box<MessageHandler> = handler_convertible.to_message_handler();
     let next_id = self.generate_subscription_id();
     let sub = Subscription::new(next_id, destination, AckMode::Auto, message_handler);
     let subscribe_frame = Frame::subscribe(sub.id.as_slice(), sub.topic.as_slice(), AckMode::Auto);
     SubscriptionBuilder::new(self, subscribe_frame, sub)
+    /*
+    SubscriptionBuilder{
+      session: self,
+      frame: subscribe_frame,
+      subscription: sub
+    }
+    */
   }
 
   pub fn subscribe<'b : 'a, T>(&mut self, topic: &str, ack_mode: AckMode, handler_convertible: T)-> IoResult<String> where T : ToMessageHandler<'b> + 'b {
