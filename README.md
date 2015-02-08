@@ -33,7 +33,7 @@ fn main() {
       Err(error)  => panic!("Could not connect to the server: {}", error)
    };
   
-  session.subscribe(destination, acknowledge_mode, |&mut: frame: &Frame| {
+  session.subscribe(destination, acknowledge_mode, |frame: &Frame| {
     message_count += 1;
     println!("Received message #{}:\n{}", message_count, frame);
     Ack
@@ -74,7 +74,7 @@ session.message(destination, "text/plain", "Hypoteneuse".as_bytes())
 
 ### Subscription Settings
 ```rust
-let id = session.subscription(destination, |&mut: frame: &Frame| {
+  let id = session.subscription(destination, |&mut: frame: &Frame| {
     message_count += 1;
     println!("Received message #{}:\n{}", message_count, frame);
     Ack
@@ -106,21 +106,17 @@ let id = session.subscription(destination, |&mut: frame: &Frame| {
 
 ### Handling RECEIPT frames
 ```rust
-  fn on_receipt(frame: &Frame) {
+  session.on_receipt(|frame: &Frame| {
     debug!("RECEIPT frame received:\n{}", frame);
-  }
-
-  session.on_receipt(on_receipt);
+  });
   session.send_text_with_receipt(topic, "Modern Major General");
 ```
 
 ### Handling ERROR frames
 ```rust
-  fn on_error(frame: &Frame) {
+  session.on_error(|frame: &Frame| {
     panic!("ERROR frame received:\n{}", frame);
-  }
-
-  session.on_error(on_error);
+  });
 ```
 
 ### Cargo.toml

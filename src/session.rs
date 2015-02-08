@@ -28,6 +28,26 @@ use transaction::Transaction;
 use message_builder::MessageBuilder;
 use subscription_builder::SubscriptionBuilder;
 
+pub trait FrameHandler {
+  fn on_frame(&mut self, &Frame);
+}
+
+impl <F> FrameHandler for F where F: FnMut(&Frame) {
+  fn on_frame(&mut self, frame: &Frame) {
+    self(frame)
+  }
+}
+
+pub trait ToFrameHandler <'a> {
+  fn to_frame_handler(self) -> Box<FrameHandler + 'a>;
+}
+
+impl <'a, T: 'a> ToFrameHandler <'a> for T where T: FrameHandler {
+  fn to_frame_handler(self) -> Box<FrameHandler + 'a> {
+    Box::new(self) as Box<FrameHandler>
+  }
+}
+
 pub struct Session <'a> { 
   pub connection : Connection,
   sender: Sender<Frame>,
@@ -37,8 +57,8 @@ pub struct Session <'a> {
   next_receipt_id: u32,
   pub subscriptions: HashMap<String, Subscription <'a>>,
   outstanding_receipts: HashSet<String>, 
-  receipt_callback: fn(&Frame) -> (), 
-  error_callback: fn(&Frame) -> ()
+  receipt_callback: Box<FrameHandler + 'a>, 
+  error_callback: Box<FrameHandler + 'a>
 }
 
 pub static GRACE_PERIOD_MULTIPLIER : f64 = 2.0f64;
@@ -73,8 +93,8 @@ impl <'a> Session <'a> {
       next_receipt_id: 0,
       subscriptions: HashMap::with_capacity(1),
       outstanding_receipts: HashSet::new(),
-      receipt_callback: Session::default_receipt_callback,
-      error_callback: Session::default_error_callback
+      receipt_callback: Box::new(Session::default_receipt_callback) as Box<FrameHandler>,
+      error_callback: Box::new(Session::default_error_callback) as Box<FrameHandler>
     }
   }
  
@@ -160,8 +180,9 @@ impl <'a> Session <'a> {
     info!("RECEIPT received:\n{}", frame);
   }
 
-  pub fn on_error(&mut self, callback: fn(&Frame)) {
-    self.error_callback = callback;
+  pub fn on_error<T: 'a>(&mut self, handler_convertible: T) where T : ToFrameHandler<'a> + 'a {
+    let handler = handler_convertible.to_frame_handler();
+    self.error_callback = handler;
   }
 
   fn handle_receipt(&mut self, frame: Frame) {
@@ -175,11 +196,12 @@ impl <'a> Session <'a> {
       },
       None => panic!("Received RECEIPT frame without a receipt-id")
     };
-    (self.receipt_callback)(&frame);
+    self.receipt_callback.on_frame(&frame);
   }
 
-  pub fn on_receipt(&mut self, callback: fn(&Frame)) {
-     self.receipt_callback = callback;
+  pub fn on_receipt<T: 'a>(&mut self, handler_convertible: T) where T: ToFrameHandler<'a> + 'a {
+    let handler = handler_convertible.to_frame_handler();
+    self.receipt_callback = handler;
   }
 
   pub fn outstanding_receipts(&self) -> Vec<&str> {
@@ -302,7 +324,7 @@ impl <'a> Session <'a> {
   pub fn dispatch(&mut self, frame: Frame) {
     // Check for ERROR frame
     match frame.command.as_slice() {
-       "ERROR" => return (self.error_callback)(&frame),
+       "ERROR" => return self.error_callback.on_frame(&frame),
        "RECEIPT" => return self.handle_receipt(frame),
         _ => {} // No operation
     };

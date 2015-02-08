@@ -22,7 +22,11 @@ fn main() {
       Err(error)  => panic!("Could not connect to the server: {}", error)
    };
 
-  let sub_id = session.subscription(destination, |&mut: frame: &Frame| {
+  session.on_error(|frame: &Frame| {
+    println!("Something went horribly wrong: {}", frame);
+  });
+
+  let sub_id = session.subscription(destination, |frame: &Frame| {
     message_count += 1;
     println!("Received message #{}:\n{}", message_count, frame);
     Ack
