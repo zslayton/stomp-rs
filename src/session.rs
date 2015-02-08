@@ -1,5 +1,4 @@
 use std::thread::Thread;
-use std::collections::hash_set::HashSet;
 use std::collections::hash_map::HashMap;
 use std::time::Duration;
 use std::old_io::BufferedReader;
@@ -20,7 +19,6 @@ use frame::Frame;
 use frame::Transmission;
 use frame::Transmission::{HeartBeat, CompleteFrame};
 use header;
-use header::Header;
 use header::HeaderList;
 use header::ReceiptId;
 use header::StompHeaderSet;
@@ -48,6 +46,8 @@ impl <'a, T: 'a> ToFrameHandler <'a> for T where T: FrameHandler {
   }
 }
 
+pub struct ReceiptHandler<'a, T>(pub T) where T: ToFrameHandler<'a>;
+
 pub struct Session <'a> { 
   pub connection : Connection,
   sender: Sender<Frame>,
@@ -56,8 +56,7 @@ pub struct Session <'a> {
   next_subscription_id: u32,
   next_receipt_id: u32,
   pub subscriptions: HashMap<String, Subscription <'a>>,
-  outstanding_receipts: HashSet<String>, 
-  receipt_callback: Box<FrameHandler + 'a>, 
+  pub receipt_handlers: HashMap<String, Box<FrameHandler + 'a>>,
   error_callback: Box<FrameHandler + 'a>
 }
 
@@ -91,9 +90,8 @@ impl <'a> Session <'a> {
       next_transaction_id: 0,
       next_subscription_id: 0,
       next_receipt_id: 0,
-      subscriptions: HashMap::with_capacity(1),
-      outstanding_receipts: HashSet::new(),
-      receipt_callback: Box::new(Session::default_receipt_callback) as Box<FrameHandler>,
+      subscriptions: HashMap::new(),
+      receipt_handlers: HashMap::new(),
       error_callback: Box::new(Session::default_error_callback) as Box<FrameHandler>
     }
   }
@@ -176,10 +174,6 @@ impl <'a> Session <'a> {
     error!("ERROR received:\n{}", frame);
   }
   
-  fn default_receipt_callback(frame : &Frame) {
-    info!("RECEIPT received:\n{}", frame);
-  }
-
   pub fn on_error<T: 'a>(&mut self, handler_convertible: T) where T : ToFrameHandler<'a> + 'a {
     let handler = handler_convertible.to_frame_handler();
     self.error_callback = handler;
@@ -188,24 +182,23 @@ impl <'a> Session <'a> {
   fn handle_receipt(&mut self, frame: Frame) {
     match frame.headers.get_receipt_id() {
       Some(ReceiptId(ref receipt_id)) => {
-        if self.outstanding_receipts.remove(*receipt_id) {
-            debug!("Removed ReceiptId '{}' from pending receipts.", *receipt_id)
-        } else {
+        let mut handler = match self.receipt_handlers.remove(*receipt_id) {
+          Some(handler) => {
+            debug!("Calling handler for ReceiptId '{}'.", *receipt_id);
+            handler
+          },
+          None => {
             panic!("Received unexpected RECEIPT '{}'", *receipt_id)
-        }
+          }
+        };
+        handler.on_frame(&frame);
       },
       None => panic!("Received RECEIPT frame without a receipt-id")
     };
-    self.receipt_callback.on_frame(&frame);
-  }
-
-  pub fn on_receipt<T: 'a>(&mut self, handler_convertible: T) where T: ToFrameHandler<'a> + 'a {
-    let handler = handler_convertible.to_frame_handler();
-    self.receipt_callback = handler;
   }
 
   pub fn outstanding_receipts(&self) -> Vec<&str> {
-    self.outstanding_receipts.iter().map(|key| key.as_slice()).collect()
+    self.receipt_handlers.keys().map(|key| key.as_slice()).collect()
   }
 
   fn generate_transaction_id(&mut self) -> u32 {
@@ -220,13 +213,13 @@ impl <'a> Session <'a> {
     id
   }
 
-  fn generate_receipt_id(&mut self) -> u32 {
+  pub fn generate_receipt_id(&mut self) -> u32 {
     let id = self.next_receipt_id;
     self.next_receipt_id += 1;
     id
   }
 
-  pub fn message(&mut self, destination: &str, mime_type: &str, body: &[u8]) -> MessageBuilder {
+  pub fn message<'b> (&'b mut self, destination: &str, mime_type: &str, body: &[u8]) -> MessageBuilder<'b, 'a> {
     let send_frame = Frame::send(destination, mime_type, body);
     MessageBuilder {
      session: self,
@@ -241,21 +234,6 @@ impl <'a> Session <'a> {
   pub fn send_bytes(&self, topic: &str, mime_type: &str, body: &[u8]) -> IoResult<()> {
     let send_frame = Frame::send(topic, mime_type, body);
     self.send(send_frame)
-  }
-
-  pub fn send_text_with_receipt(&mut self, topic: &str, body: &str) -> IoResult<()> {
-    self.send_bytes_with_receipt(topic, "text/plain", body.as_bytes())
-  }
-
-  pub fn send_bytes_with_receipt(&mut self, topic: &str, mime_type: &str, body: &[u8]) -> IoResult<()> {
-    let mut send_frame = Frame::send(topic, mime_type, body);
-    let receipt_id = format!("message/{}", self.generate_receipt_id().to_string());
-    send_frame.headers.push(
-      Header::encode_key_value("receipt", receipt_id.as_slice())
-    );
-    try!(self.send(send_frame));
-    self.outstanding_receipts.insert(receipt_id);
-    Ok(())
   }
 
   pub fn subscription<'b, 'c: 'a, T>(&'b mut self, destination: &'b str, handler_convertible: T) -> SubscriptionBuilder<'b, 'a, 'c> where T: ToMessageHandler<'c> {

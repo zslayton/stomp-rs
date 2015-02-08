@@ -5,6 +5,7 @@ use stomp::header::{Header, SuppressedHeader};
 use stomp::subscription::AckOrNack::Ack;
 use stomp::subscription::AckMode;
 use stomp::connection::{HeartBeat, Credentials};
+use stomp::session::ReceiptHandler;
 
 fn main() {
   env_logger::init().unwrap();
@@ -42,9 +43,14 @@ fn main() {
   session.send_text(destination, "Vegetable");
   session.send_text(destination, "Mineral");
 
+  let receipt_handler = |frame:&Frame|{
+      println!("Got the RECEIPT frame for 'Hypoteneuse':\n{}", frame);
+  };
+
   session.message(destination, "text/plain", "Hypoteneuse".as_bytes())
     .with(Header::new("client-id", "0"))
     .with(Header::new("persistent", "true"))
+    .with(ReceiptHandler(receipt_handler))
     .send();
 
   session.listen(); // Loops infinitely, awaiting messages
