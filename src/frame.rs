@@ -9,10 +9,33 @@ use std::old_io::InvalidInput;
 use std::old_io::BufferedReader;
 use std::old_io::BufferedWriter;
 use std::str::from_utf8;
-
+use std::slice::AsSlice;
+use std::str::Str;
 use std::fmt;
 use std::fmt::Formatter;
 use std::fmt::Result;
+
+pub trait ToFrameBody {
+  fn to_frame_body<'a>(&'a self) -> &'a [u8];
+}
+
+impl <T> ToFrameBody for T where T: AsSlice<u8> {
+  fn to_frame_body<'a>(&'a self) -> &'a [u8] {
+    self.as_slice()
+  } 
+}
+
+impl ToFrameBody for &'static str { 
+  fn to_frame_body<'a>(&'a self) -> &'a [u8] {
+    self.as_slice().as_bytes()
+  } 
+}
+
+impl ToFrameBody for String { 
+  fn to_frame_body<'a>(&'a self) -> &'a [u8] {
+    self.as_slice().as_bytes()
+  } 
+}
 
 #[derive(Clone)]
 pub struct Frame {
@@ -202,13 +225,12 @@ impl Frame {
     nack_frame
   }
 
-  pub fn send(topic: &str, mime_type: &str, body: &[u8]) -> Frame {
+  pub fn send(topic: &str, body: &[u8]) -> Frame {
     let send_frame = Frame {
       command : "SEND".to_string(),
       headers : header_list![
         "destination" => topic,
-        "content-length" => body.len().to_string().as_slice(),
-        "content-type" => mime_type
+        "content-length" => body.len().to_string().as_slice()
       ],
       body : body.to_vec()
     };

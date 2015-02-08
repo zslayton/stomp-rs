@@ -1,0 +1,11 @@
+[package]
+
+name = "transactions"
+version = "0.0.1"
+authors = ["Zack Slayton <zack.slayton@gmail.com>"]
+
+[dependencies.stomp]
+stomp = "*"
+
+[dependencies.env_logger]
+env_logger = "*"

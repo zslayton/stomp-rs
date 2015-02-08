@@ -1,4 +1,5 @@
-src/target/**
+src/**/target/**
 target/**
+examples/**/target/**
 **.swp
 Cargo.lock

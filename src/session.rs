@@ -17,6 +17,7 @@ use subscription::AckOrNack::{Ack, Nack};
 use subscription::{Subscription, MessageHandler, ToMessageHandler};
 use frame::Frame;
 use frame::Transmission;
+use frame::ToFrameBody;
 use frame::Transmission::{HeartBeat, CompleteFrame};
 use header;
 use header::HeaderList;
@@ -219,21 +220,12 @@ impl <'a> Session <'a> {
     id
   }
 
-  pub fn message<'b> (&'b mut self, destination: &str, mime_type: &str, body: &[u8]) -> MessageBuilder<'b, 'a> {
-    let send_frame = Frame::send(destination, mime_type, body);
+  pub fn message<'b, T: ToFrameBody> (&'b mut self, destination: &str, body_convertible: T) -> MessageBuilder<'b, 'a> {
+    let send_frame = Frame::send(destination, body_convertible.to_frame_body());
     MessageBuilder {
      session: self,
      frame: send_frame
     }
-  }
-
-  pub fn send_text(&self, topic: &str, body: &str) -> IoResult<()> {
-    self.send_bytes(topic, "text/plain", body.as_bytes())
-  }
- 
-  pub fn send_bytes(&self, topic: &str, mime_type: &str, body: &[u8]) -> IoResult<()> {
-    let send_frame = Frame::send(topic, mime_type, body);
-    self.send(send_frame)
   }
 
   pub fn subscription<'b, 'c: 'a, T>(&'b mut self, destination: &'b str, handler_convertible: T) -> SubscriptionBuilder<'b, 'a, 'c> where T: ToMessageHandler<'c> {
@@ -245,19 +237,6 @@ impl <'a> Session <'a> {
       handler: message_handler,
       headers: HeaderList::new()
     }
-  }
-
-  pub fn subscribe<'b : 'a, T>(&mut self, topic: &str, ack_mode: AckMode, handler_convertible: T)-> IoResult<String> where T : ToMessageHandler<'b> + 'b {
-    let message_handler : Box<MessageHandler> = handler_convertible.to_message_handler();
-    let next_id = self.generate_subscription_id();
-    let sub = Subscription::new(next_id, topic, ack_mode, message_handler);
-    let subscribe_frame = Frame::subscribe(sub.id.as_slice(), sub.topic.as_slice(), ack_mode);
-    debug!("Sending frame:\n{}", subscribe_frame);
-    try!(self.send(subscribe_frame));
-    debug!("Registering callback for subscription id: {}", sub.id);
-    let id_to_return = sub.id.to_string();
-    self.subscriptions.insert(sub.id.to_string(), sub);
-    Ok(id_to_return)
   }
 
   pub fn unsubscribe(&mut self, sub_id: &str) -> IoResult<()> {
@@ -272,9 +251,9 @@ impl <'a> Session <'a> {
   }
 
   pub fn begin_transaction<'b>(&'b mut self) -> IoResult<Transaction<'b, 'a>> {
-    let mut tx = Transaction::new(self.generate_transaction_id(), self);
-    let _ = try!(tx.begin());
-    Ok(tx)
+    let transaction = Transaction::new(self.generate_transaction_id(), self);
+    let _ = try!(transaction.begin());
+    Ok(transaction)
   }
 
   pub fn send(&self, frame: Frame) -> IoResult<()> {

@@ -1,7 +1,7 @@
 extern crate env_logger;
 extern crate stomp;
 use stomp::frame::Frame;
-use stomp::header::{Header, SuppressedHeader};
+use stomp::header::{Header, SuppressedHeader, ContentType};
 use stomp::subscription::AckOrNack::Ack;
 use stomp::subscription::AckMode;
 use stomp::connection::{HeartBeat, Credentials};
@@ -39,25 +39,18 @@ fn main() {
   .with(ReceiptHandler(on_subscribe))
   .create();
 
-  // Send arbitrary bytes with a specified MIME type
-  session.send_bytes(destination, "text/plain", "Animal".as_bytes());
-
-  // Send UTF-8 text with an assumed MIME type of 'text/plain'
-  session.send_text(destination, "Vegetable");
-  session.send_text(destination, "Mineral");
-
+  session.message(destination, "Animal").send();
+  session.message(destination, "Vegetable").send();
+  session.message(destination, "Mineral").send();
 
   let receipt_handler = |frame:&Frame|{
      println!("Got the RECEIPT frame for 'Hypoteneuse':\n{}", frame);
   };
 
-  session.message(destination, "text/plain", "Hypoteneuse".as_bytes())
-    .with(Header::new("client-id", "0"))
+  session.message(destination, "Hypoteneuse".as_bytes())
+    .with(ContentType("text/plain"))
     .with(Header::new("persistent", "true"))
     .with(ReceiptHandler(receipt_handler))
-//    .with(ReceiptHandler(|frame:&Frame|{
-//      println!("Got the RECEIPT frame for 'Hypoteneuse':\n{}", frame);
-//    }))
     .send();
 
   session.listen(); // Loops infinitely, awaiting messages

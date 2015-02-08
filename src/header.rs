@@ -39,7 +39,7 @@ impl HeaderList {
 }
 
 pub struct SuppressedHeader<'a> (pub &'a str);
-
+pub struct ContentType<'a>(pub &'a str);
 #[derive(Clone)]
 pub struct Header {
   buffer : String,

@@ -1,7 +1,7 @@
 use message_builder::MessageBuilder;
 use session_builder::SessionBuilder;
 use subscription_builder::SubscriptionBuilder;
-use header::{Header, SuppressedHeader};
+use header::{Header, SuppressedHeader, ContentType};
 use connection::{HeartBeat, Credentials};
 use subscription::AckMode;
 use session::{ToFrameHandler, ReceiptHandler};
@@ -21,6 +21,14 @@ impl <'a, 'b> OptionSetter<MessageBuilder<'a, 'b>> for SuppressedHeader<'a> {
   fn set_option(self, mut builder: MessageBuilder<'a, 'b>) -> MessageBuilder<'a, 'b> {
     let SuppressedHeader(key) = self;
     builder.frame.headers.retain(|header| (*header).get_key() != key);
+    builder
+  }
+}
+
+impl <'a, 'b> OptionSetter<MessageBuilder<'a, 'b>> for ContentType<'a> {
+  fn set_option(self, mut builder: MessageBuilder<'a, 'b>) -> MessageBuilder<'a, 'b> {
+    let ContentType(content_type) = self;
+    builder.frame.headers.push(Header::new("content-type", content_type));
     builder
   }
 }

@@ -1,34 +1,33 @@
 use frame::Frame;
+use frame::ToFrameBody;
+use message_builder::MessageBuilder;
 use std::old_io::IoResult;
 use header::Header;
 use session::Session;
 
-pub struct Transaction<'a, 'b: 'a> {
+pub struct Transaction<'a, 'session: 'a> {
   pub id: String, 
-  pub session: &'a mut Session<'b>
+  pub session: &'a mut Session<'session>
 }
 
-impl <'a, 'b> Transaction<'a, 'b> {
-  pub fn new(id: u32, session: &'a mut Session<'b>) -> Transaction<'a, 'b> {
+impl <'a, 'session> Transaction<'a, 'session> {
+  pub fn new<'b>(id: u32, session: &'b mut Session<'session>) -> Transaction<'b, 'session> {
     Transaction {
       id: format!("tx/{}",id),
       session: session,
     }
   }
 
-  pub fn send_bytes(&mut self, topic: &str, mime_type: &str, body: &[u8]) -> IoResult<()> {
-    let mut send_frame = Frame::send(topic, mime_type, body);
-    send_frame.headers.push(
-      Header::encode_key_value("transaction", self.id.as_slice())
-    );
-    self.session.send(send_frame)
+  pub fn message<'b, T: ToFrameBody> (&'b mut self, destination: & str, body_convertible: T) -> MessageBuilder<'b, 'session> {
+    let mut send_frame = Frame::send(destination, body_convertible.to_frame_body());
+    send_frame.headers.push(Header::new("transaction", self.id.as_slice()));
+    MessageBuilder {
+     session: self.session,
+     frame: send_frame
+    }
   }
 
-  pub fn send_text(&mut self, topic: &str, body: &str) -> IoResult<()> {
-    self.send_bytes(topic, "text/plain", body.as_bytes())
-  }
-
-  pub fn begin(&mut self) -> IoResult<()> {
+  pub fn begin<'b>(&'b self) -> IoResult<()> {
     let begin_frame = Frame::begin(self.id.as_slice());
     self.session.send(begin_frame)
   }
