@@ -88,3 +88,15 @@ impl <'a, 'session, T> OptionSetter<MessageBuilder<'a, 'session>> for ReceiptHan
   }
 }
 
+impl <'a, 'session, 'sub, T> OptionSetter<SubscriptionBuilder<'a, 'session, 'sub>> for ReceiptHandler<'session, T> where T : ToFrameHandler<'session> {
+  fn set_option(self, mut builder: SubscriptionBuilder<'a, 'session, 'sub>) -> SubscriptionBuilder<'a, 'session, 'sub> {
+    let next_id = builder.session.generate_receipt_id();
+    let receipt_id = format!("message/{}", next_id);
+    let ReceiptHandler(handler_convertible) = self;
+    let handler = handler_convertible.to_frame_handler();
+    builder.headers.push(Header::new("receipt", receipt_id.as_slice())); 
+    builder.session.receipt_handlers.insert(receipt_id.to_string(), handler);;
+    builder
+  }
+}
+

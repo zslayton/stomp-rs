@@ -27,6 +27,8 @@ fn main() {
     println!("Something went horribly wrong: {}", frame);
   });
 
+  let on_subscribe = |frame: &Frame| println!("Subscribed successfully.");
+
   let sub_id = session.subscription(destination, |frame: &Frame| {
     message_count += 1;
     println!("Received message #{}:\n{}", message_count, frame);
@@ -34,6 +36,7 @@ fn main() {
   })
   .with(AckMode::Client)
   .with(Header::new("custom-subscription-header", "lozenge"))
+  .with(ReceiptHandler(on_subscribe))
   .create();
 
   // Send arbitrary bytes with a specified MIME type
@@ -43,14 +46,18 @@ fn main() {
   session.send_text(destination, "Vegetable");
   session.send_text(destination, "Mineral");
 
+
   let receipt_handler = |frame:&Frame|{
-      println!("Got the RECEIPT frame for 'Hypoteneuse':\n{}", frame);
+     println!("Got the RECEIPT frame for 'Hypoteneuse':\n{}", frame);
   };
 
   session.message(destination, "text/plain", "Hypoteneuse".as_bytes())
     .with(Header::new("client-id", "0"))
     .with(Header::new("persistent", "true"))
     .with(ReceiptHandler(receipt_handler))
+//    .with(ReceiptHandler(|frame:&Frame|{
+//      println!("Got the RECEIPT frame for 'Hypoteneuse':\n{}", frame);
+//    }))
     .send();
 
   session.listen(); // Loops infinitely, awaiting messages
