@@ -37,7 +37,7 @@ fn main() {
   .with(AckMode::Client)
   .with(Header::new("custom-subscription-header", "lozenge"))
   .with(ReceiptHandler(on_subscribe))
-  .create();
+  .start();
 
   session.message(destination, "Animal").send();
   session.message(destination, "Vegetable").send();
