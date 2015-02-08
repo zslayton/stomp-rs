@@ -74,7 +74,7 @@ session.message(destination, "text/plain", "Hypoteneuse".as_bytes())
 
 ### Subscription Settings
 ```rust
-  let id = session.subscription(destination, |&mut: frame: &Frame| {
+  let id = session.subscription(destination, |frame: &Frame| {
     message_count += 1;
     println!("Received message #{}:\n{}", message_count, frame);
     Ack
@@ -106,17 +106,18 @@ session.message(destination, "text/plain", "Hypoteneuse".as_bytes())
 
 ### Handling RECEIPT frames
 ```rust
-  session.on_receipt(|frame: &Frame| {
-    debug!("RECEIPT frame received:\n{}", frame);
-  });
-  session.send_text_with_receipt(topic, "Modern Major General");
+let handler = |frame: &Frame| debug!("Received receipt for 'Hypoteneuse'", frame);
+session.message(destination, "text/plain", "Hypoteneuse".as_bytes())
+  .with(ReceiptHandler(handler))
+  .send();
 ```
+NOTE: Due to upstream [Rust issue #20174](https://github.com/rust-lang/rust/issues/20174), the compiler will ICE if you attempt to declare the handler inside the `ReceiptHandler` struct in-line. Until this is fixed, the handler must be defined in advance.
 
 ### Handling ERROR frames
 ```rust
-  session.on_error(|frame: &Frame| {
-    panic!("ERROR frame received:\n{}", frame);
-  });
+session.on_error(|frame: &Frame| {
+  panic!("ERROR frame received:\n{}", frame);
+});
 ```
 
 ### Cargo.toml
