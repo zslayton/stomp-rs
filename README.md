@@ -18,14 +18,11 @@ The APIs for `stomp-rs` are not yet stable and are likely to fluctuate before v1
 ```rust
 extern crate stomp;
 use stomp::frame::Frame;
-use stomp::header::Header;
 use stomp::subscription::AckOrNack::Ack;
-use stomp::subscription::AckMode::Client;
 
 fn main() {
   
   let destination = "/topic/messages";
-  let acknowledge_mode = Client;
   let mut message_count: u64 = 0;
 
   let mut session = match stomp::session("127.0.0.1", 61613).start() {
@@ -51,6 +48,9 @@ fn main() {
 
 ### Session Settings
 ```rust
+use stomp::header::header::Header;
+use stomp::connection::{HeartBeat, Credentials};
+// ...
 let mut session = match stomp::session("127.0.0.1", 61613)
   .with(Credentials("sullivan", "m1k4d0"))
   .with(HeartBeat(5000, 2000))
@@ -63,6 +63,8 @@ let mut session = match stomp::session("127.0.0.1", 61613)
 
 ### Message Settings
 ```rust
+use stomp::header::{Header, SuppressedHeader, ContentType};
+// ...
 session.message(destination, "Hypoteneuse".as_bytes())
   .with(ContentType("text/plain"))
   .with(Header::new("persistent", "true"))
@@ -72,6 +74,10 @@ session.message(destination, "Hypoteneuse".as_bytes())
 
 ### Subscription Settings
 ```rust
+use stomp::subscription::AckMode;
+use stomp::header::Header;
+use stomp::frame::Frame;
+// ...
   let id = session.subscription(destination, |frame: &Frame| {
     message_count += 1;
     println!("Received message #{}:\n{}", message_count, frame);
