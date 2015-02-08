@@ -33,18 +33,15 @@ fn main() {
       Err(error)  => panic!("Could not connect to the server: {}", error)
    };
   
-  session.subscribe(destination, acknowledge_mode, |frame: &Frame| {
+  session.subscription(destination, |frame: &Frame| {
     message_count += 1;
     println!("Received message #{}:\n{}", message_count, frame);
     Ack
-  });
+  }).start();
   
-  // Send arbitrary bytes with a specified MIME type
-  session.send_bytes(topic, "text/plain", "Animal".as_bytes());
-  
-  // Send UTF-8 text with an assumed MIME type of 'text/plain'
-  session.send_text(topic, "Vegetable");
-  session.send_text(topic, "Mineral");
+  session.message(destination, "Animal").send();
+  session.message(destination, "Vegetable").send();
+  session.message(destination, "Mineral").send();
   
   session.listen(); // Loops infinitely, awaiting messages
 
@@ -66,7 +63,8 @@ let mut session = match stomp::session("127.0.0.1", 61613)
 
 ### Message Settings
 ```rust
-session.message(destination, "text/plain", "Hypoteneuse".as_bytes())
+session.message(destination, "Hypoteneuse".as_bytes())
+  .with(ContentType("text/plain"))
   .with(Header::new("persistent", "true"))
   .with(SuppressedHeader("content-length")
   .send();
@@ -81,30 +79,24 @@ session.message(destination, "text/plain", "Hypoteneuse".as_bytes())
   })
   .with(AckMode::Client)
   .with(Header::new("custom-subscription-header", "lozenge"))
-  .create();
+  .start();
 ```
 
 ### Transactions
 ```rust
-  let mut tx = match session.begin_transaction() {
-    Ok(tx) => tx,
-    Err(error) => panic!("Could not begin new transaction: {}", error)
-  };
-
-  tx.send_text(topic, "Animal");
-  tx.send_text(topic, "Vegetable");
-  tx.send_text(topic, "Mineral");
-
-  tx.commit(); // Or tx.abort();
-```
-
-### Receipts
-```rust
-  session.send_text_with_receipt(topic, "Modern Major General");
-  debug!("Oustanding Receipt IDs: {}", session.oustanding_receipts());
+match session.begin_transaction() {
+  Ok(mut transaction) => {
+    transaction.message(destination, "Animal").send();
+    transaction.message(destination, "Vegetable").send();
+    transaction.message(destination, "Mineral").send();
+    transaction.commit();
+},
+  Err(error)  => panic!("Could not connect to the server: {}", error)
+};
 ```
 
 ### Handling RECEIPT frames
+If you include a ReceiptHandler in your message, the client will request that the server send a receipt when it has successfully processed the frame.
 ```rust
 let handler = |frame: &Frame| debug!("Received receipt for 'Hypoteneuse'", frame);
 session.message(destination, "text/plain", "Hypoteneuse".as_bytes())
