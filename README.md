@@ -1,6 +1,6 @@
 stomp-rs ![Travis CI Build Status](https://api.travis-ci.org/zslayton/stomp-rs.png?branch=master)
 =====
-`stomp-rs` provides a full [STOMP](http://stomp.github.io/stomp-specification-1.2.html) 1.2 client implementation for the [Rust programming language](http://www.rust-lang.org/). This allows programs written in Rust to interact with message queueing services like [ActiveMQ](http://activemq.apache.org/) and [RabbitMQ](http://www.rabbitmq.com/).
+`stomp-rs` provides a full [STOMP](http://stomp.github.io/stomp-specification-1.2.html) 1.2 client implementation for the [Rust programming language](http://www.rust-lang.org/). This allows programs written in Rust to interact with message queueing services like [ActiveMQ](http://activemq.apache.org/), [RabbitMQ](http://www.rabbitmq.com/), [HornetQ](http://hornetq.jboss.org/) and [OpenMQ](https://mq.java.net/).
 
 - [x] Connect
 - [x] Subscribe
@@ -46,7 +46,7 @@ fn main() {
 }
 ```
 
-### Session Settings
+### Session Configuration
 ```rust
 use stomp::header::header::Header;
 use stomp::connection::{HeartBeat, Credentials};
@@ -61,7 +61,7 @@ let mut session = match stomp::session("127.0.0.1", 61613)
    };
 ```
 
-### Message Settings
+### Message Configuration
 ```rust
 use stomp::header::{Header, SuppressedHeader, ContentType};
 // ...
@@ -72,7 +72,7 @@ session.message(destination, "Hypoteneuse".as_bytes())
   .send();
 ```
 
-### Subscription Settings
+### Subscription Configuration
 ```rust
 use stomp::subscription::AckMode;
 use stomp::header::Header;
@@ -135,4 +135,4 @@ name = "stomp_test"
 stomp = "*"
 ```
 
-keywords: `Stomp`, `Rust`, `rust-lang`, `rustlang`, `cargo`, `ActiveMQ`, `RabbitMQ`, `Message Queue`, `MQ`
+keywords: `Stomp`, `Rust`, `rust-lang`, `rustlang`, `cargo`, `ActiveMQ`, `RabbitMQ`, `HornetQ`, `OpenMQ`, `Message Queue`, `MQ`
