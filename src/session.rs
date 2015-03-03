@@ -9,6 +9,7 @@ use std::old_io::IoResult;
 use std::old_io::IoError;
 use std::old_io::IoErrorKind::{ConnectionFailed};
 use std::old_io::net::tcp::TcpStream;
+use std::marker::PhantomData;
 use connection::Connection;
 use subscription::AckMode;
 use subscription::AckMode::{Auto, Client, ClientIndividual};
@@ -47,7 +48,17 @@ impl <'a, T: 'a> ToFrameHandler <'a> for T where T: FrameHandler {
   }
 }
 
-pub struct ReceiptHandler<'a, T>(pub T) where T: ToFrameHandler<'a>;
+pub struct ReceiptHandler<'a, T> where T: 'a + ToFrameHandler<'a> {
+  pub handler: T,
+  _marker: PhantomData<&'a T>
+}
+
+impl<'a, T> ReceiptHandler<'a, T> where T: 'a + ToFrameHandler<'a> {
+  pub fn new(val: T) -> ReceiptHandler<'a T> {
+    let r = ReceiptHandler { handler: val, _marker: PhantomData };
+    r
+  }
+}
 
 pub struct Session <'a> { 
   pub connection : Connection,
