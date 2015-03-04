@@ -23,7 +23,7 @@ fn main() {
     println!("Received message #{}:\n{}", message_count, frame);
     Ack
   })
-  .create();
+  .start();
 
   match session.begin_transaction() {
     Ok(mut transaction) => {    

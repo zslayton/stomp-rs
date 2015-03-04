@@ -106,11 +106,9 @@ If you include a ReceiptHandler in your message, the client will request that th
 ```rust
 let handler = |frame: &Frame| debug!("Received receipt for 'Hypoteneuse'", frame);
 session.message(destination, "text/plain", "Hypoteneuse".as_bytes())
-  .with(ReceiptHandler(handler))
+  .with(ReceiptHandler::new(|frame: &Frame| println!("Got a receipt for 'Hypoteneuse'.")))
   .send();
 ```
-NOTE: Due to upstream [Rust issue #20174](https://github.com/rust-lang/rust/issues/20174), the compiler will ICE if you attempt to declare the handler inside the `ReceiptHandler` struct in-line. Until this is fixed, the handler must be defined in advance.
-
 ### Handling ERROR frames
 ```rust
 session.on_error(|frame: &Frame| {

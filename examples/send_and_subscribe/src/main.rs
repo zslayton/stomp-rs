@@ -27,8 +27,6 @@ fn main() {
     println!("Something went horribly wrong: {}", frame);
   });
 
-  let on_subscribe = |frame: &Frame| println!("Subscribed successfully.");
-
   let sub_id = session.subscription(destination, |frame: &Frame| {
     message_count += 1;
     println!("Received message #{}:\n{}", message_count, frame);
@@ -36,21 +34,17 @@ fn main() {
   })
   .with(AckMode::Client)
   .with(Header::new("custom-subscription-header", "lozenge"))
-  .with(ReceiptHandler(on_subscribe))
+  .with(ReceiptHandler::new(|frame: &Frame| println!("Subscribed successfully.")))
   .start();
 
   session.message(destination, "Animal").send();
   session.message(destination, "Vegetable").send();
   session.message(destination, "Mineral").send();
 
-  let receipt_handler = |frame:&Frame|{
-     println!("Got the RECEIPT frame for 'Hypoteneuse':\n{}", frame);
-  };
-
   session.message(destination, "Hypoteneuse".as_bytes())
     .with(ContentType("text/plain"))
     .with(Header::new("persistent", "true"))
-    .with(ReceiptHandler(receipt_handler))
+    .with(ReceiptHandler::new(|frame: &Frame| println!("Got a RECEIPT for 'Hypoteneuse'")))
     .send();
 
   session.listen(); // Loops infinitely, awaiting messages
