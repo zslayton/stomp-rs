@@ -104,7 +104,6 @@ match session.begin_transaction() {
 ### Handling RECEIPT frames
 If you include a ReceiptHandler in your message, the client will request that the server send a receipt when it has successfully processed the frame.
 ```rust
-let handler = |frame: &Frame| debug!("Received receipt for 'Hypoteneuse'", frame);
 session.message(destination, "text/plain", "Hypoteneuse".as_bytes())
   .with(ReceiptHandler::new(|frame: &Frame| println!("Got a receipt for 'Hypoteneuse'.")))
   .send();
