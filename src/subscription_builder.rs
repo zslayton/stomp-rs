@@ -3,7 +3,7 @@ use subscription::{Subscription, MessageHandler, AckMode};
 use frame::Frame;
 use header::HeaderList;
 use option_setter::OptionSetter;
-use std::old_io::IoResult;
+use std::io::Result;
 
 pub struct SubscriptionBuilder <'a, 'session: 'a, 'sub: 'session> {
   pub session: &'a mut Session<'session>,
@@ -16,7 +16,7 @@ pub struct SubscriptionBuilder <'a, 'session: 'a, 'sub: 'session> {
 impl <'a, 'session, 'sub> SubscriptionBuilder <'a, 'session, 'sub> {
 
   #[allow(dead_code)] 
-  pub fn start(mut self) -> IoResult<String> {
+  pub fn start(mut self) -> Result<String> {
     let next_id = self.session.generate_subscription_id();
     let subscription = Subscription::new(next_id, self.destination, self.ack_mode, self.handler);
     let mut subscribe_frame = Frame::subscribe(subscription.id.as_slice(), self.destination, self.ack_mode);

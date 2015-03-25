@@ -1,10 +1,11 @@
-use std::old_io::net::tcp::TcpStream;
-use std::old_io::BufferedReader;
-use std::old_io::BufferedWriter;
+//use std::old_io::net::tcp::TcpStream;
+use std::net::TcpStream;
+use std::io::BufReader;
+use std::io::BufWriter;
 use frame::Transmission;
-use std::old_io::IoResult;
-use std::old_io::IoError;
-use std::old_io::InvalidInput;
+use std::io::Result;
+use std::io::Error;
+use std::io::ErrorKind::InvalidInput;
 use std::str::from_utf8;
 use frame::Frame;
 use std::cmp::max;
@@ -22,7 +23,7 @@ pub struct Credentials<'a>(pub &'a str, pub &'a str);
   
 impl Connection {
 
-  pub fn new(ip_address: &str, port: u16) -> IoResult<Connection> {
+  pub fn new(ip_address: &str, port: u16) -> Result<Connection> {
     let tcp_stream = try!(TcpStream::connect((ip_address, port)));
     Ok(Connection {
       ip_address: ip_address.to_string(),
@@ -47,11 +48,11 @@ impl Connection {
     (heartbeat_tx_ms, heartbeat_rx_ms)
   }
 
-  pub fn start_session_with_frame(&mut self, connect_frame: Frame) -> IoResult<(u32, u32)> {
-    let mut buffered_writer = BufferedWriter::new(self.tcp_stream.clone());
+  pub fn start_session_with_frame(&mut self, connect_frame: Frame) -> Result<(u32, u32)> {
+    let mut buffered_writer = BufWriter::new(self.tcp_stream.try_clone().unwrap());
     try!(connect_frame.write(&mut buffered_writer));
     let connected_frame : Frame;
-    let mut buffered_reader = BufferedReader::new(self.tcp_stream.clone());
+    let mut buffered_reader = BufReader::new(self.tcp_stream.try_clone().unwrap());
     loop{
       let transmission = try!(Frame::read(&mut buffered_reader));
       match transmission {
@@ -64,11 +65,7 @@ impl Connection {
     }
     match connected_frame.command.as_slice() {
       "CONNECTED" => debug!("Received CONNECTED frame: {}", connected_frame),
-       _ => return Err(IoError{
-             kind: InvalidInput, 
-             desc: "Could not connect.",
-             detail: from_utf8(connected_frame.body.as_slice()).ok().map(|err: &str| err.to_string())
-           })
+       _ => return Err(Error::new(InvalidInput, "Could not connect.", from_utf8(connected_frame.body.as_slice()).ok().map(|err: &str| err.to_string())))
     }
     match connected_frame.headers.get_heart_beat() {
       Some(header::HeartBeat(tx_ms, rx_ms)) => Ok((tx_ms, rx_ms)),

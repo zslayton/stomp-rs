@@ -1,7 +1,7 @@
 use session::Session;
 use frame::Frame;
 use option_setter::OptionSetter;
-use std::old_io::IoResult;
+use std::io::Result;
 use connection::{Connection, HeartBeat, Credentials};
 use header::{HeaderList, Header};
 
@@ -29,7 +29,7 @@ impl <'a> SessionBuilder <'a> {
   }
 
   #[allow(dead_code)] 
-  pub fn start(mut self) -> IoResult<Session<'a>> {
+  pub fn start(mut self) -> Result<Session<'a>> {
     // Add credentials to the header list if specified
     match self.credentials {
       Some(Credentials(ref login, ref passcode)) => {

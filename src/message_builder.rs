@@ -1,7 +1,7 @@
 use session::Session;
 use frame::Frame;
 use option_setter::OptionSetter;
-use std::old_io::IoResult;
+use std::io::Result;
 
 pub struct MessageBuilder <'a, 'session: 'a> {
   pub session: &'a mut Session<'session>,
@@ -10,7 +10,7 @@ pub struct MessageBuilder <'a, 'session: 'a> {
 
 impl <'a, 'session> MessageBuilder <'a, 'session> {
   #[allow(dead_code)] 
-  pub fn send(self) -> IoResult<()> {
+  pub fn send(self) -> Result<()> {
     self.session.send(self.frame)
   }
 

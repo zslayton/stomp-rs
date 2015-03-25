@@ -3,17 +3,18 @@ use header::Header;
 use header::ContentLength;
 use header::StompHeaderSet;
 use subscription::AckMode;
-use std::old_io::IoResult;
-use std::old_io::IoError;
-use std::old_io::InvalidInput;
-use std::old_io::BufferedReader;
-use std::old_io::BufferedWriter;
+use std::io::Result;
+use std::io::Error;
+use std::io::ErrorKind::InvalidInput;
+use std::io::Write;
+use std::io::Read;
+use std::io::BufWriter;
+use std::io::BufRead;
 use std::str::from_utf8;
 use std::slice::AsSlice;
 use std::str::Str;
 use std::fmt;
 use std::fmt::Formatter;
-use std::fmt::Result;
 
 pub trait ToFrameBody {
   fn to_frame_body<'a>(&'a self) -> &'a [u8];
@@ -50,7 +51,7 @@ pub enum Transmission {
 }
 
 impl fmt::Display for Frame {
-    fn fmt(&self, f: &mut Formatter) -> Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{}", self.to_str())
     }
 }
@@ -88,15 +89,15 @@ impl Frame {
     frame_string
   }
 
-  pub fn write<T: Writer>(&self, stream: &mut BufferedWriter<T>) -> IoResult<()> {
+  pub fn write<W: Write>(&self, stream: &mut BufWriter<W>) -> Result<()> {
     debug!("Sending frame:\n{}", self.to_str());
-    try!(stream.write_str(self.command.as_slice()));
-    try!(stream.write_str("\n"));
+    try!(stream.write(self.command.as_slice().as_bytes()));
+    try!(stream.write("\n".as_bytes()));
     for header in self.headers.iter() {
-      try!(stream.write_str(header.get_raw()));
-      try!(stream.write_str("\n"));
+      try!(stream.write(header.get_raw().as_bytes()));
+      try!(stream.write("\n".as_bytes()));
     }
-    try!(stream.write_str("\n"));
+    try!(stream.write("\n".as_bytes()));
     try!(stream.write_all(self.body.as_slice()));
     try!(stream.write_all(&[0]));
     try!(stream.flush());
@@ -116,10 +117,11 @@ impl Frame {
     line
   }
 
-  pub fn read<R: Reader>(stream: &mut BufferedReader<R>) -> IoResult<Transmission> {
-    let mut line : String;
-    // Empty lines are interpreted as heartbeats 
-    line = Frame::chomp_line(try!(stream.read_line()));
+  pub fn read<B: BufRead>(stream: &mut B) -> Result<Transmission> {
+    let mut line : String = String::new();
+    // Empty lines are interpreted as heartbeats
+    try!(stream.read_line(&mut line));
+    line = Frame::chomp_line(line);
     if line.len() == 0 {
       return Ok(Transmission::HeartBeat);
     }
@@ -128,26 +130,29 @@ impl Frame {
 
     let mut header_list : HeaderList = HeaderList::with_capacity(6);
     loop {
-      line = Frame::chomp_line(try!(stream.read_line()));
+      line = String::new();
+      try!(stream.read_line(&mut line));
+      line = Frame::chomp_line(line);
       if line.len() == 0 { // Empty line, no more headers
         break;
       }
       let header = Header::decode_string(line.as_slice());
       match header {
         Some(h) => header_list.push(h),
-        None => return Err(IoError{kind: InvalidInput, desc: "Invalid header encountered.", detail: Some(line.to_string())})
+        None => return Err(Error::new(InvalidInput, "Invalid header encountered.", Some(line.to_string())))
       }
     }
 
-    let body: Vec<u8>; 
+    let mut body: Vec<u8>; 
     let content_length = header_list.get_content_length();
     match content_length {
       Some(ContentLength(num_bytes)) => {
-        body = try!(stream.read_exact(num_bytes as usize ));
-        let _ = try!(stream.read_exact(1)); // Toss aside trailing null octet
+        body = try!(stream.take((num_bytes+1) as u64).bytes().collect()); // bytes + 1 for trailing null octet
+        body.pop(); // Remove trailing octet
       },
       None => {
-        body = try!(stream.read_until(0 as u8));
+        body = Vec::new();
+        let _ = try!(stream.read_until(0 as u8, &mut body));
       }
     }
     Ok(Transmission::CompleteFrame(Frame{command: command, headers: header_list, body:body}))

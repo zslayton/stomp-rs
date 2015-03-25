@@ -1,14 +1,15 @@
 use std::thread;
 use std::collections::hash_map::HashMap;
 use std::time::Duration;
-use std::old_io::BufferedReader;
-use std::old_io::BufferedWriter;
+use std::io::BufReader;
+use std::io::Write;
+use std::io::BufWriter;
 use std::sync::mpsc::{Sender, Receiver, channel};
 use std::old_io::Timer;
-use std::old_io::IoResult;
-use std::old_io::IoError;
-use std::old_io::IoErrorKind::{ConnectionFailed};
-use std::old_io::net::tcp::TcpStream;
+use std::io::Result;
+use std::io::Error;
+use std::io::ErrorKind::{Other};
+use std::net::TcpStream;
 use std::marker::PhantomData;
 use connection::Connection;
 use subscription::AckMode;
@@ -76,8 +77,8 @@ pub static GRACE_PERIOD_MULTIPLIER : f64 = 2.0f64;
 
 impl <'a> Session <'a> {
   pub fn new(connection: Connection, tx_heartbeat_ms: u32, rx_heartbeat_ms: u32) -> Session<'a> {
-    let reading_stream = connection.tcp_stream.clone();
-    let writing_stream = reading_stream.clone();
+    let reading_stream = connection.tcp_stream.try_clone().unwrap();
+    let writing_stream = reading_stream.try_clone().unwrap();
     let (sender_tx, sender_rx) : (Sender<Frame>, Receiver<Frame>) = channel();
     let (receiver_tx, receiver_rx) : (Sender<Frame>, Receiver<Frame>) = channel();
 
@@ -109,7 +110,7 @@ impl <'a> Session <'a> {
   }
  
  fn send_loop(frames_to_send: Receiver<Frame>, tcp_stream: TcpStream){
-    let mut writer : BufferedWriter<TcpStream> = BufferedWriter::new(tcp_stream);
+    let mut writer : BufWriter<TcpStream> = BufWriter::new(tcp_stream);
     loop {
       let frame_to_send = frames_to_send.recv().ok().expect("Could not receive the next frame: communication was lost with the receiving thread.");
       frame_to_send.write(&mut writer).ok().expect("Couldn't send message!");
@@ -117,14 +118,14 @@ impl <'a> Session <'a> {
   }
 
   fn send_loop_with_heartbeat(frames_to_send: Receiver<Frame>, tcp_stream: TcpStream, heartbeat: Duration){
-    let mut writer : BufferedWriter<TcpStream> = BufferedWriter::new(tcp_stream);
+    let mut writer : BufWriter<TcpStream> = BufWriter::new(tcp_stream);
     let mut timer = Timer::new().unwrap(); 
     loop {
       let timeout = timer.oneshot(heartbeat);
       select! {
         _ = timeout.recv() => {
           debug!("Sending heartbeat...");
-          writer.write_char('\n').ok().expect("Failed to send heartbeat.");
+          writer.write(&['\n' as u8]).ok().expect("Failed to send heartbeat.");
           let _ = writer.flush();
         },
         frame_to_send = frames_to_send.recv() => {
@@ -173,7 +174,7 @@ impl <'a> Session <'a> {
   }
 
   fn read_loop(transmission_listener: Sender<Transmission>, tcp_stream: TcpStream){
-    let mut reader : BufferedReader<TcpStream> = BufferedReader::new(tcp_stream);
+    let mut reader : BufReader<TcpStream> = BufReader::new(tcp_stream);
     loop {
       match Frame::read(&mut reader){
          Ok(transmission) => transmission_listener.send(transmission).unwrap(),
@@ -250,42 +251,34 @@ impl <'a> Session <'a> {
     }
   }
 
-  pub fn unsubscribe(&mut self, sub_id: &str) -> IoResult<()> {
+  pub fn unsubscribe(&mut self, sub_id: &str) -> Result<()> {
      let _ = self.subscriptions.remove(sub_id);
      let unsubscribe_frame = Frame::unsubscribe(sub_id.as_slice());
      self.send(unsubscribe_frame)
   }
 
-  pub fn disconnect(&mut self) -> IoResult<()> {
+  pub fn disconnect(&mut self) -> Result<()> {
     let disconnect_frame = Frame::disconnect();
     self.send(disconnect_frame)
   }
 
-  pub fn begin_transaction<'b>(&'b mut self) -> IoResult<Transaction<'b, 'a>> {
+  pub fn begin_transaction<'b>(&'b mut self) -> Result<Transaction<'b, 'a>> {
     let transaction = Transaction::new(self.generate_transaction_id(), self);
     let _ = try!(transaction.begin());
     Ok(transaction)
   }
 
-  pub fn send(&self, frame: Frame) -> IoResult<()> {
+  pub fn send(&self, frame: Frame) -> Result<()> {
     match self.sender.send(frame) {
-      Ok(_) => Ok(()),
-      Err(_) => Err(IoError {
-        kind: ConnectionFailed,
-        desc: "The connection to the server was lost.",
-        detail: None 
-      })
+      Ok(_) => Ok(()),//FIXME: Replace 'Other' below with a more meaningful ErrorKind
+      Err(_) => Err(Error::new(Other, "Could not send frame: the connection to the server was lost.", None))
     }
   }
 
-  pub fn receive(&self) -> IoResult<Frame> {
+  pub fn receive(&self) -> Result<Frame> {
     match self.receiver.recv() {
-      Ok(frame) => Ok(frame),
-      Err(_) => Err(IoError {
-        kind: ConnectionFailed,
-        desc: "Could not receive frame: the connection to the server was lost.",
-        detail: None
-      })
+      Ok(frame) => Ok(frame),//FIXME: Replace 'Other' below with a more meaningful ErrorKind
+      Err(_) => Err(Error::new(Other, "Could not receive frame: the connection to the server was lost.", None))
     }
   }
 
@@ -339,17 +332,17 @@ impl <'a> Session <'a> {
     }
   } 
 
-  fn acknowledge_frame(&mut self, ack_id: &str) -> IoResult<()> {
+  fn acknowledge_frame(&mut self, ack_id: &str) -> Result<()> {
     let ack_frame = Frame::ack(ack_id);
     self.send(ack_frame)
   }
 
-  fn negatively_acknowledge_frame(&mut self, ack_id: &str) -> IoResult<()>{
+  fn negatively_acknowledge_frame(&mut self, ack_id: &str) -> Result<()>{
     let nack_frame = Frame::nack(ack_id);
     self.send(nack_frame)
   }
 
-  pub fn listen(&mut self) -> IoResult<()> {
+  pub fn listen(&mut self) -> Result<()> {
     loop {
       let frame = try!(self.receive());
       debug!("Received '{}' frame, dispatching.", frame.command);

@@ -4,6 +4,7 @@
 #![feature(collections)]
 #![feature(core)]
 #![feature(std_misc)]
+#![feature(io)]
 #![feature(old_io)]
 
 #[macro_use]
