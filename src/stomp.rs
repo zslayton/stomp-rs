@@ -6,6 +6,7 @@
 #![feature(std_misc)]
 #![feature(io)]
 #![feature(old_io)]
+#![feature(slice_patterns)]
 
 #[macro_use]
 extern crate log;
