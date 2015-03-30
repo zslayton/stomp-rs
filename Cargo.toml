@@ -14,3 +14,6 @@ name = "stomp"
 
 [dependencies.log]
 log = "*"
+
+[dependencies.mio]
+git = "https://github.com/carllerche/mio"
