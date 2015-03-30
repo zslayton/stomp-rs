@@ -89,7 +89,7 @@ impl Frame {
     frame_string
   }
 
-  pub fn write<W: Write>(&self, stream: &mut BufWriter<W>) -> Result<()> {
+  pub fn write<W: Write>(&self, stream: &mut W) -> Result<()> {
     debug!("Sending frame:\n{}", self.to_str());
     try!(stream.write(self.command.as_slice().as_bytes()));
     try!(stream.write("\n".as_bytes()));
