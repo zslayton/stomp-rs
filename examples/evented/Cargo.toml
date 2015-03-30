@@ -1,0 +1,8 @@
+[package]
+
+name = "evented"
+version = "0.0.1"
+authors = ["Zack Slayton <zack.slayton@gmail.com>"]
+
+[dependencies.stomp]
+stomp = "*"
