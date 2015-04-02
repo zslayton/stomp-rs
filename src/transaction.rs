@@ -27,7 +27,7 @@ impl <'a, 'session> Transaction<'a, 'session> {
     }
   }
 
-  pub fn begin<'b>(&'b self) -> Result<()> {
+  pub fn begin<'b>(&'b mut self) -> Result<()> {
     let begin_frame = Frame::begin(self.id.as_slice());
     self.session.send(begin_frame)
   }

@@ -4,7 +4,6 @@ use std::time::Duration;
 use std::io::BufReader;
 use std::io::Write;
 use std::io::BufWriter;
-use std::sync::mpsc::{Sender, Receiver, channel};
 use std::old_io::Timer;
 use std::io::Result;
 use std::io::Error;
@@ -28,6 +27,11 @@ use header::StompHeaderSet;
 use transaction::Transaction;
 use message_builder::MessageBuilder;
 use subscription_builder::SubscriptionBuilder;
+
+use mio::{EventLoop, Handler, Token, ReadHint};
+//use mio::tcp::*;
+use core::ops::DerefMut;
+
 
 pub trait FrameHandler {
   fn on_frame(&mut self, &Frame);
@@ -61,125 +65,78 @@ impl<'a, T> ReceiptHandler<'a, T> where T: 'a + ToFrameHandler<'a> {
   }
 }
 
+const GRACE_PERIOD_MULTIPLIER: f64 = 2.0;
+
 pub struct Session <'a> { 
   pub connection : Connection,
-  sender: Sender<Frame>,
-  receiver: Receiver<Frame>,
+  writer: BufWriter<TcpStream>,
+  reader: BufReader<TcpStream>,
   next_transaction_id: u32,
   next_subscription_id: u32,
   next_receipt_id: u32,
+  rx_heartbeat_ms: u64,
+  tx_heartbeat_ms: u64,
   pub subscriptions: HashMap<String, Subscription <'a>>,
   pub receipt_handlers: HashMap<String, Box<FrameHandler + 'a>>,
   error_callback: Box<FrameHandler + 'a>
 }
 
-pub static GRACE_PERIOD_MULTIPLIER : f64 = 2.0f64;
+pub enum StompTimeout {
+  SendHeartBeat,
+  ReceiveHeartBeat
+}
+
+impl <'a> Handler for Session<'a> {
+  type Timeout = StompTimeout;
+  type Message = ();
+
+  fn timeout(&mut self, event_loop: &mut EventLoop<Session<'a>>, mut timeout: StompTimeout) {
+    match timeout {
+      StompTimeout::SendHeartBeat => {
+        println!("Send heartbeat");
+        event_loop.timeout_ms(StompTimeout::SendHeartBeat, self.tx_heartbeat_ms);
+      },
+      StompTimeout::ReceiveHeartBeat => {
+        println!("Did not receive a heartbeat in time.");
+      },
+    }
+  }
+
+  fn readable(&mut self, event_loop: &mut EventLoop<Session<'a>>, token: Token, _: ReadHint) {
+    println!("Readable!");
+    match Frame::read(&mut self.reader) {
+      Ok(HeartBeat) => println!("Received HeartBeat"),
+      Ok(CompleteFrame(frame)) => {
+        println!("Received frame!:\n{}", frame);
+        self.dispatch(frame);
+      },
+      Err(_) => panic!("Failed to receive Heartbeat or frame.")
+    }
+  } 
+}
 
 impl <'a> Session <'a> {
   pub fn new(connection: Connection, tx_heartbeat_ms: u32, rx_heartbeat_ms: u32) -> Session<'a> {
     let reading_stream = connection.tcp_stream.try_clone().unwrap();
     let writing_stream = reading_stream.try_clone().unwrap();
-    let (sender_tx, sender_rx) : (Sender<Frame>, Receiver<Frame>) = channel();
-    let (receiver_tx, receiver_rx) : (Sender<Frame>, Receiver<Frame>) = channel();
 
     let modified_rx_heartbeat_ms : u32 = ((rx_heartbeat_ms as f64) * GRACE_PERIOD_MULTIPLIER) as u32;
-    let _ = thread::spawn(move || {
-      match modified_rx_heartbeat_ms {
-        0 => Session::receive_loop(receiver_tx, reading_stream),
-        _ => Session::receive_loop_with_heartbeat(receiver_tx, reading_stream, Duration::milliseconds(modified_rx_heartbeat_ms as i64))
-      } 
-    });
-    let _ = thread::spawn(move || {
-      match tx_heartbeat_ms {
-        0 => Session::send_loop(sender_rx, writing_stream),
-        _ => Session::send_loop_with_heartbeat(sender_rx, writing_stream, Duration::milliseconds(tx_heartbeat_ms as i64))
-      } 
-    });
+
+    let reader = BufReader::new(reading_stream);
+    let writer = BufWriter::new(writing_stream);
 
     Session {
       connection: connection,
-      sender : sender_tx,
-      receiver : receiver_rx,
+      reader: reader,
+      writer: writer,
       next_transaction_id: 0,
       next_subscription_id: 0,
       next_receipt_id: 0,
+      rx_heartbeat_ms: modified_rx_heartbeat_ms as u64,
+      tx_heartbeat_ms: tx_heartbeat_ms as u64,
       subscriptions: HashMap::new(),
       receipt_handlers: HashMap::new(),
       error_callback: Box::new(Session::default_error_callback) as Box<FrameHandler>
-    }
-  }
- 
- fn send_loop(frames_to_send: Receiver<Frame>, tcp_stream: TcpStream){
-    let mut writer : BufWriter<TcpStream> = BufWriter::new(tcp_stream);
-    loop {
-      let frame_to_send = frames_to_send.recv().ok().expect("Could not receive the next frame: communication was lost with the receiving thread.");
-      frame_to_send.write(&mut writer).ok().expect("Couldn't send message!");
-    }
-  }
-
-  fn send_loop_with_heartbeat(frames_to_send: Receiver<Frame>, tcp_stream: TcpStream, heartbeat: Duration){
-    let mut writer : BufWriter<TcpStream> = BufWriter::new(tcp_stream);
-    let mut timer = Timer::new().unwrap(); 
-    loop {
-      let timeout = timer.oneshot(heartbeat);
-      select! {
-        _ = timeout.recv() => {
-          debug!("Sending heartbeat...");
-          writer.write(&['\n' as u8]).ok().expect("Failed to send heartbeat.");
-          let _ = writer.flush();
-        },
-        frame_to_send = frames_to_send.recv() => {
-          frame_to_send.unwrap().write(&mut writer).ok().expect("Couldn't send message!");
-        }
-      }
-    }
-  }
-
-   fn receive_loop(frame_recipient: Sender<Frame>, tcp_stream: TcpStream){
-    let (trans_tx, trans_rx) : (Sender<Transmission>, Receiver<Transmission>) = channel();
-    let _ = thread::spawn(move || {
-      Session::read_loop(trans_tx, tcp_stream); 
-    });
-    loop {
-      match trans_rx.recv() {
-        Ok(HeartBeat) => debug!("Received heartbeat"),
-        Ok(CompleteFrame(frame)) => frame_recipient.send(frame).unwrap(),
-        Err(_) => panic!("Could not read Transmission from remote host: the reading thread has died.")
-      }
-    }
-  }
- 
-
-  fn receive_loop_with_heartbeat(frame_recipient: Sender<Frame>, tcp_stream: TcpStream, heartbeat: Duration){
-    let (trans_tx, trans_rx) : (Sender<Transmission>, Receiver<Transmission>) = channel();
-    let _ = thread::spawn(move || {
-      Session::read_loop(trans_tx, tcp_stream); 
-    });
-
-
-    let mut timer = Timer::new().unwrap(); 
-    loop {
-      let timeout = timer.oneshot(heartbeat);
-      select! {
-        _ = timeout.recv() => error!("Did not receive expected heartbeat!"),
-        transmission = trans_rx.recv() => {
-          match transmission {
-            Ok(HeartBeat) => debug!("Received heartbeat"),
-            Ok(CompleteFrame(frame)) => frame_recipient.send(frame).unwrap(),
-            Err(_) => panic!("Could not read Transmission from remote host: the readin thread has died.")
-          }
-        }
-      }
-    }
-  }
-
-  fn read_loop(transmission_listener: Sender<Transmission>, tcp_stream: TcpStream){
-    let mut reader : BufReader<TcpStream> = BufReader::new(tcp_stream);
-    loop {
-      match Frame::read(&mut reader){
-         Ok(transmission) => transmission_listener.send(transmission).unwrap(),
-         Err(error) => panic!("Couldn't read from server!: {}", error)
-      }
     }
   }
 
@@ -263,22 +220,15 @@ impl <'a> Session <'a> {
   }
 
   pub fn begin_transaction<'b>(&'b mut self) -> Result<Transaction<'b, 'a>> {
-    let transaction = Transaction::new(self.generate_transaction_id(), self);
+    let mut transaction = Transaction::new(self.generate_transaction_id(), self);
     let _ = try!(transaction.begin());
     Ok(transaction)
   }
 
-  pub fn send(&self, frame: Frame) -> Result<()> {
-    match self.sender.send(frame) {
+  pub fn send(&mut self, frame: Frame) -> Result<()> {
+    match frame.write(&mut self.writer) {
       Ok(_) => Ok(()),//FIXME: Replace 'Other' below with a more meaningful ErrorKind
       Err(_) => Err(Error::new(Other, "Could not send frame: the connection to the server was lost.", None))
-    }
-  }
-
-  pub fn receive(&self) -> Result<Frame> {
-    match self.receiver.recv() {
-      Ok(frame) => Ok(frame),//FIXME: Replace 'Other' below with a more meaningful ErrorKind
-      Err(_) => Err(Error::new(Other, "Could not receive frame: the connection to the server was lost.", None))
     }
   }
 
@@ -343,10 +293,8 @@ impl <'a> Session <'a> {
   }
 
   pub fn listen(&mut self) -> Result<()> {
-    loop {
-      let frame = try!(self.receive());
-      debug!("Received '{}' frame, dispatching.", frame.command);
-      self.dispatch(frame)
-    }
+    let mut event_loop : EventLoop<Session<'a>> = EventLoop::new().unwrap();
+    event_loop.register(self.reader.get_ref(), Token(0));
+    event_loop.run(self)
   }
 }
