@@ -31,16 +31,16 @@ pub trait MessageHandler {
 
 pub struct Subscription <'a> { 
   pub id : String,
-  pub topic: String,
+  pub destination: String,
   pub ack_mode: AckMode,
   pub handler: Box<MessageHandler + 'a>
 }
 
 impl <'a> Subscription <'a> {
-  pub fn new(id: u32, topic: &str, ack_mode: AckMode, message_handler: Box<MessageHandler + 'a>) -> Subscription <'a> {
+  pub fn new(id: u32, destination: &str, ack_mode: AckMode, message_handler: Box<MessageHandler + 'a>) -> Subscription <'a> {
     Subscription {
       id: format!("stomp-rs/{}",id),
-      topic: topic.to_string(),
+      destination: destination.to_string(),
       ack_mode: ack_mode,
       handler: message_handler
     }

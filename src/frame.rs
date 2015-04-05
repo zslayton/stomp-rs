@@ -183,11 +183,11 @@ impl Frame {
   }
 
 
-  pub fn subscribe(subscription_id: &str, topic: &str, ack_mode: AckMode) -> Frame {
+  pub fn subscribe(subscription_id: &str, destination: &str, ack_mode: AckMode) -> Frame {
     let subscribe_frame = Frame {
       command : "SUBSCRIBE".to_string(),
       headers : header_list![
-        "destination" => topic,
+        "destination" => destination,
         "id" => subscription_id,
         "ack" => ack_mode.as_text()
       ],
@@ -229,11 +229,11 @@ impl Frame {
     nack_frame
   }
 
-  pub fn send(topic: &str, body: &[u8]) -> Frame {
+  pub fn send(destination: &str, body: &[u8]) -> Frame {
     let send_frame = Frame {
       command : "SEND".to_string(),
       headers : header_list![
-        "destination" => topic,
+        "destination" => destination,
         "content-length" => body.len().to_string().as_ref()
       ],
       body : body.to_vec()
