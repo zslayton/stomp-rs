@@ -43,7 +43,7 @@ impl <'a> SessionBuilder <'a> {
     let HeartBeat(client_tx_ms, client_rx_ms) = self.heartbeat;
     let heart_beat_string = format!("{},{}", client_tx_ms, client_rx_ms);
     debug!("Using heartbeat: {},{}", client_tx_ms, client_rx_ms);
-    self.headers.push(Header::new("heart-beat", heart_beat_string.as_slice()));
+    self.headers.push(Header::new("heart-beat", heart_beat_string.as_ref()));
 
     let connect_frame = Frame {
       command : "CONNECT".to_string(),

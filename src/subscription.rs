@@ -19,7 +19,7 @@ impl AckMode {
   }
 }
 
-#[derive(Copy)]
+#[derive(Clone, Copy)]
 pub enum AckOrNack {
   Ack,
   Nack

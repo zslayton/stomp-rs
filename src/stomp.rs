@@ -2,9 +2,7 @@
 #![crate_type = "lib"]
 
 #![feature(collections)]
-#![feature(core)]
 #![feature(std_misc)]
-#![feature(io)]
 #![feature(old_io)]
 #![feature(slice_patterns)]
 

@@ -211,7 +211,7 @@ impl <'a> Session <'a> {
   }
 
   pub fn outstanding_receipts(&self) -> Vec<&str> {
-    self.receipt_handlers.keys().map(|key| key.as_slice()).collect()
+    self.receipt_handlers.keys().map(|key| key.as_ref()).collect()
   }
 
   fn generate_transaction_id(&mut self) -> u32 {
@@ -253,7 +253,7 @@ impl <'a> Session <'a> {
 
   pub fn unsubscribe(&mut self, sub_id: &str) -> Result<()> {
      let _ = self.subscriptions.remove(sub_id);
-     let unsubscribe_frame = Frame::unsubscribe(sub_id.as_slice());
+     let unsubscribe_frame = Frame::unsubscribe(sub_id.as_ref());
      self.send(unsubscribe_frame)
   }
 
@@ -271,20 +271,20 @@ impl <'a> Session <'a> {
   pub fn send(&self, frame: Frame) -> Result<()> {
     match self.sender.send(frame) {
       Ok(_) => Ok(()),//FIXME: Replace 'Other' below with a more meaningful ErrorKind
-      Err(_) => Err(Error::new(Other, "Could not send frame: the connection to the server was lost.", None))
+      Err(_) => Err(Error::new(Other, "Could not send frame: the connection to the server was lost."))
     }
   }
 
   pub fn receive(&self) -> Result<Frame> {
     match self.receiver.recv() {
       Ok(frame) => Ok(frame),//FIXME: Replace 'Other' below with a more meaningful ErrorKind
-      Err(_) => Err(Error::new(Other, "Could not receive frame: the connection to the server was lost.", None))
+      Err(_) => Err(Error::new(Other, "Could not receive frame: the connection to the server was lost."))
     }
   }
 
   pub fn dispatch(&mut self, frame: Frame) {
     // Check for ERROR frame
-    match frame.command.as_slice() {
+    match frame.command.as_ref() {
        "ERROR" => return self.error_callback.on_frame(&frame),
        "RECEIPT" => return self.handle_receipt(frame),
         _ => {} // No operation

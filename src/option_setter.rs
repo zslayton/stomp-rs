@@ -90,7 +90,7 @@ impl <'a, 'session, T> OptionSetter<MessageBuilder<'a, 'session>> for ReceiptHan
     let receipt_id = format!("message/{}", next_id);
     let handler_convertible = self.handler;
     let handler = handler_convertible.to_frame_handler();
-    builder.frame.headers.push(Header::new("receipt", receipt_id.as_slice())); 
+    builder.frame.headers.push(Header::new("receipt", receipt_id.as_ref())); 
     builder.session.receipt_handlers.insert(receipt_id.to_string(), handler);;
     builder
   }
@@ -102,7 +102,7 @@ impl <'a, 'session, 'sub, T> OptionSetter<SubscriptionBuilder<'a, 'session, 'sub
     let receipt_id = format!("message/{}", next_id);
     let handler_convertible = self.handler;
     let handler = handler_convertible.to_frame_handler();
-    builder.headers.push(Header::new("receipt", receipt_id.as_slice())); 
+    builder.headers.push(Header::new("receipt", receipt_id.as_ref())); 
     builder.session.receipt_handlers.insert(receipt_id.to_string(), handler);;
     builder
   }

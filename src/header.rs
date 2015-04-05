@@ -109,7 +109,7 @@ impl Header {
   }
 
   pub fn get_raw<'a>(&'a self) -> &'a str {
-    self.buffer.as_slice()
+    self.buffer.as_ref()
   }
 
   pub fn get_key<'a>(&'a self) -> &'a str {
@@ -127,11 +127,11 @@ impl Header {
 // Headers in the Spec
 pub struct AcceptVersion(pub Vec<StompVersion>);
 pub struct Ack<'a>(pub &'a str);
-#[derive(Copy)]
+#[derive(Clone, Copy)]
 pub struct ContentLength(pub u32);
 pub struct Custom(pub Header);
 pub struct Destination<'a> (pub &'a str);
-#[derive(Copy)]
+#[derive(Clone, Copy)]
 pub struct HeartBeat(pub u32, pub u32);
 pub struct Host<'a>(pub &'a str);
 pub struct Id<'a>(pub &'a str);
@@ -144,10 +144,10 @@ pub struct Server<'a>(pub &'a str);
 pub struct Session<'a> (pub &'a str);
 pub struct Subscription<'a>(pub &'a str);
 pub struct Transaction<'a>(pub &'a str);
-#[derive(Copy)]
+#[derive(Clone, Copy)]
 pub struct Version(pub StompVersion);
 
-#[derive(Copy)]
+#[derive(Clone, Copy)]
 pub enum StompVersion {
   Stomp_v1_0,
   Stomp_v1_1,
@@ -220,7 +220,7 @@ impl StompHeaderSet for HeaderList {
       None => return None
     };
     let spec_list: Vec<u32> = spec.split(',').filter_map(|str_val| str_val.parse::<u32>().ok()).collect();
-    match spec_list.as_slice() {
+    match spec_list.as_ref() {
       [x, y] => Some(HeartBeat(x, y)),
       _ => None
     }
@@ -308,7 +308,7 @@ impl StompHeaderSet for HeaderList {
       Some(h) => h.get_value(),
       None => return None
     };
-    match (version).as_slice() {
+    match (version).as_ref() {
       "1.0" => Some(Version(StompVersion::Stomp_v1_0)), // TODO: Impl FromStr for StompVersion
       "1.1" => Some(Version(StompVersion::Stomp_v1_1)),
       "1.2" => Some(Version(StompVersion::Stomp_v1_2)),
