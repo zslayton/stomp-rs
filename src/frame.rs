@@ -138,7 +138,7 @@ impl Frame {
       let header = Header::decode_string(line.as_ref());
       match header {
         Some(h) => header_list.push(h),
-        None => return Err(Error::new(InvalidInput, "Invalid header encountered."))//, line.to_string().as_str())))
+        None => return Err(Error::new(InvalidInput, "Invalid header encountered."))
       }
     }
 
