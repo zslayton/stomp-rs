@@ -11,31 +11,30 @@ use std::io::Read;
 use std::io::BufWriter;
 use std::io::BufRead;
 use std::str::from_utf8;
-use std::slice::AsSlice;
-use std::str::Str;
 use std::fmt;
 use std::fmt::Formatter;
 
 pub trait ToFrameBody {
-  fn to_frame_body<'a>(&'a self) -> &'a [u8];
+  fn to_frame_body<'a>(&'a self) -> &'a[u8];
 }
 
-impl <T> ToFrameBody for T where T: AsSlice<u8> {
-  fn to_frame_body<'a>(&'a self) -> &'a [u8] {
-    self.as_slice()
-  } 
+impl <'b> ToFrameBody for &'b [u8] {
+  fn to_frame_body<'a>(&'a self) -> &'a [u8]{
+    self
+  }
 }
 
-impl ToFrameBody for &'static str { 
+impl <'b> ToFrameBody for &'b str { 
   fn to_frame_body<'a>(&'a self) -> &'a [u8] {
-    self.as_slice().as_bytes()
+    self.as_bytes()
   } 
 }
 
 impl ToFrameBody for String { 
   fn to_frame_body<'a>(&'a self) -> &'a [u8] {
-    self.as_slice().as_bytes()
-  } 
+    let string : &str = self.as_ref();
+    string.as_bytes()
+  }
 }
 
 #[derive(Clone)]
@@ -74,14 +73,14 @@ impl Frame {
   pub fn to_str(&self) -> String {
     let space_required = self.count_bytes();
     let mut frame_string = String::with_capacity(space_required);
-    frame_string.push_str(self.command.as_slice());
+    frame_string.push_str(self.command.as_ref());
     frame_string.push_str("\n");
     for header in self.headers.iter() {
       frame_string.push_str(header.get_raw());
       frame_string.push_str("\n");
     }
     frame_string.push_str("\n");
-    let body_string : &str = match from_utf8(self.body.as_slice()) {
+    let body_string : &str = match from_utf8(self.body.as_ref()) {
       Ok(ref s) => *s,
       Err(_) => "<Binary content>" // Space is wasted in this case. Could shrink to fit?
     };
@@ -91,14 +90,14 @@ impl Frame {
 
   pub fn write<W: Write>(&self, stream: &mut W) -> Result<()> {
     debug!("Sending frame:\n{}", self.to_str());
-    try!(stream.write(self.command.as_slice().as_bytes()));
+    try!(stream.write(self.command.as_bytes()));
     try!(stream.write("\n".as_bytes()));
     for header in self.headers.iter() {
       try!(stream.write(header.get_raw().as_bytes()));
       try!(stream.write("\n".as_bytes()));
     }
     try!(stream.write("\n".as_bytes()));
-    try!(stream.write_all(self.body.as_slice()));
+    try!(stream.write_all(self.body.as_ref()));
     try!(stream.write_all(&[0]));
     try!(stream.flush());
     debug!("write() complete.");
@@ -110,7 +109,7 @@ impl Frame {
     let chomped_length : usize;
     {
       let chars_to_remove : &[char] = &['\r', '\n'];
-      let trimmed_line : &str = line.as_slice().trim_right_matches(chars_to_remove);
+      let trimmed_line : &str = line.trim_right_matches(chars_to_remove);
       chomped_length = trimmed_line.len();
     }
     line.truncate(chomped_length);
@@ -136,10 +135,10 @@ impl Frame {
       if line.len() == 0 { // Empty line, no more headers
         break;
       }
-      let header = Header::decode_string(line.as_slice());
+      let header = Header::decode_string(line.as_ref());
       match header {
         Some(h) => header_list.push(h),
-        None => return Err(Error::new(InvalidInput, "Invalid header encountered.", Some(line.to_string())))
+        None => return Err(Error::new(InvalidInput, "Invalid header encountered."))
       }
     }
 
@@ -164,7 +163,7 @@ impl Frame {
        command : "CONNECT".to_string(),
        headers : header_list![
          "accept-version" => "1.2",
-         "heart-beat" => heart_beat.as_slice(),
+         "heart-beat" => heart_beat.as_ref(),
          "content-length" => "0"
        ],
        body : Vec::new() 
@@ -184,11 +183,11 @@ impl Frame {
   }
 
 
-  pub fn subscribe(subscription_id: &str, topic: &str, ack_mode: AckMode) -> Frame {
+  pub fn subscribe(subscription_id: &str, destination: &str, ack_mode: AckMode) -> Frame {
     let subscribe_frame = Frame {
       command : "SUBSCRIBE".to_string(),
       headers : header_list![
-        "destination" => topic,
+        "destination" => destination,
         "id" => subscription_id,
         "ack" => ack_mode.as_text()
       ],
@@ -230,12 +229,12 @@ impl Frame {
     nack_frame
   }
 
-  pub fn send(topic: &str, body: &[u8]) -> Frame {
+  pub fn send(destination: &str, body: &[u8]) -> Frame {
     let send_frame = Frame {
       command : "SEND".to_string(),
       headers : header_list![
-        "destination" => topic,
-        "content-length" => body.len().to_string().as_slice()
+        "destination" => destination,
+        "content-length" => body.len().to_string().as_ref()
       ],
       body : body.to_vec()
     };

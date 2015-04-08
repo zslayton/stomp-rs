@@ -6,7 +6,6 @@ use frame::Transmission;
 use std::io::Result;
 use std::io::Error;
 use std::io::ErrorKind::InvalidInput;
-use std::str::from_utf8;
 use frame::Frame;
 use std::cmp::max;
 use header::{self, StompHeaderSet};
@@ -17,7 +16,7 @@ pub struct Connection {
   pub tcp_stream : TcpStream
 }
 
-#[derive(Copy)]
+#[derive(Clone, Copy)]
 pub struct HeartBeat(pub u32, pub u32);
 pub struct Credentials<'a>(pub &'a str, pub &'a str); 
   
@@ -63,9 +62,9 @@ impl Connection {
         }
       } 
     }
-    match connected_frame.command.as_slice() {
+    match connected_frame.command.as_ref() {
       "CONNECTED" => debug!("Received CONNECTED frame: {}", connected_frame),
-       _ => return Err(Error::new(InvalidInput, "Could not connect.", from_utf8(connected_frame.body.as_slice()).ok().map(|err: &str| err.to_string())))
+       _ => return Err(Error::new(InvalidInput, "Could not connect."))
     }
     match connected_frame.headers.get_heart_beat() {
       Some(header::HeartBeat(tx_ms, rx_ms)) => Ok((tx_ms, rx_ms)),
