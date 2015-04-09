@@ -1,10 +1,7 @@
-use std::thread;
 use std::collections::hash_map::HashMap;
-use std::time::Duration;
 use std::io::BufReader;
 use std::io::Write;
 use std::io::BufWriter;
-use std::old_io::Timer;
 use std::io::Result;
 use std::io::Error;
 use std::io::ErrorKind::{Other};
@@ -17,9 +14,8 @@ use subscription::AckOrNack;
 use subscription::AckOrNack::{Ack, Nack};
 use subscription::{Subscription, MessageHandler, ToMessageHandler};
 use frame::Frame;
-use frame::Transmission;
 use frame::ToFrameBody;
-use frame::Transmission::{HeartBeat, CompleteFrame};
+use frame::Transmission::{HeartBeat, CompleteFrame, ConnectionClosed};
 use header;
 use header::HeaderList;
 use header::ReceiptId;
@@ -28,9 +24,8 @@ use transaction::Transaction;
 use message_builder::MessageBuilder;
 use subscription_builder::SubscriptionBuilder;
 
-use mio::{EventLoop, Handler, Token, ReadHint};
+use mio::{EventLoop, Handler, Token, ReadHint, Timeout};
 //use mio::tcp::*;
-use core::ops::DerefMut;
 
 
 pub trait FrameHandler {
@@ -75,6 +70,7 @@ pub struct Session <'a> {
   next_subscription_id: u32,
   next_receipt_id: u32,
   rx_heartbeat_ms: u64,
+  rx_heartbeat_timeout: Option<Timeout>,
   tx_heartbeat_ms: u64,
   pub subscriptions: HashMap<String, Subscription <'a>>,
   pub receipt_handlers: HashMap<String, Box<FrameHandler + 'a>>,
@@ -90,26 +86,33 @@ impl <'a> Handler for Session<'a> {
   type Timeout = StompTimeout;
   type Message = ();
 
-  fn timeout(&mut self, event_loop: &mut EventLoop<Session<'a>>, mut timeout: StompTimeout) {
+  fn timeout(&mut self, event_loop: &mut EventLoop<Session<'a>>, timeout: StompTimeout) {
     match timeout {
       StompTimeout::SendHeartBeat => {
-        println!("Send heartbeat");
-        event_loop.timeout_ms(StompTimeout::SendHeartBeat, self.tx_heartbeat_ms);
+        debug!("Sending modified heartbeat"); // FIXME: Make this a function
+        let _ = event_loop.timeout_ms(StompTimeout::SendHeartBeat, self.tx_heartbeat_ms);
+        self.writer.write("\n".as_bytes()).ok().expect("Could not send a heartbeat. Connection failed.");
+        let _ = self.writer.flush();
       },
       StompTimeout::ReceiveHeartBeat => {
-        println!("Did not receive a heartbeat in time.");
+        debug!("Did not receive a heartbeat in time.");
       },
     }
   }
 
-  fn readable(&mut self, event_loop: &mut EventLoop<Session<'a>>, token: Token, _: ReadHint) {
-    println!("Readable!");
+  fn readable(&mut self, event_loop: &mut EventLoop<Session<'a>>, _token: Token, _: ReadHint) {
+    debug!("Readable!");
     match Frame::read(&mut self.reader) {
-      Ok(HeartBeat) => println!("Received HeartBeat"),
+      Ok(HeartBeat) => {
+        debug!("Received HeartBeat");
+        self.rx_heartbeat_timeout.map(|timeout| event_loop.clear_timeout(timeout));
+        self.rx_heartbeat_timeout = Some(event_loop.timeout_ms(StompTimeout::ReceiveHeartBeat, self.rx_heartbeat_ms).unwrap());
+      },
       Ok(CompleteFrame(frame)) => {
-        println!("Received frame!:\n{}", frame);
+        debug!("Received frame!:\n{}", frame);
         self.dispatch(frame);
       },
+      Ok(ConnectionClosed) => panic!("Connection closed by remote host."),
       Err(_) => panic!("Failed to receive Heartbeat or frame.")
     }
   } 
@@ -133,7 +136,8 @@ impl <'a> Session <'a> {
       next_subscription_id: 0,
       next_receipt_id: 0,
       rx_heartbeat_ms: modified_rx_heartbeat_ms as u64,
-      tx_heartbeat_ms: tx_heartbeat_ms as u64,
+      rx_heartbeat_timeout: None,
+      tx_heartbeat_ms: tx_heartbeat_ms as u64 - 1000, //FIXME: Make this configurable
       subscriptions: HashMap::new(),
       receipt_handlers: HashMap::new(),
       error_callback: Box::new(Session::default_error_callback) as Box<FrameHandler>
@@ -294,7 +298,9 @@ impl <'a> Session <'a> {
 
   pub fn listen(&mut self) -> Result<()> {
     let mut event_loop : EventLoop<Session<'a>> = EventLoop::new().unwrap();
-    event_loop.register(self.reader.get_ref(), Token(0));
+    let _ = event_loop.register(self.reader.get_ref(), Token(0));
+    let _ = event_loop.timeout_ms(StompTimeout::SendHeartBeat, self.tx_heartbeat_ms);
+    self.rx_heartbeat_timeout = Some(event_loop.timeout_ms(StompTimeout::ReceiveHeartBeat, self.rx_heartbeat_ms).unwrap());
     event_loop.run(self)
   }
 }

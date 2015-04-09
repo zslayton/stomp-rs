@@ -8,7 +8,6 @@ use std::io::Error;
 use std::io::ErrorKind::InvalidInput;
 use std::io::Write;
 use std::io::Read;
-use std::io::BufWriter;
 use std::io::BufRead;
 use std::str::from_utf8;
 use std::fmt;
@@ -46,7 +45,8 @@ pub struct Frame {
 
 pub enum Transmission {
   HeartBeat,
-  CompleteFrame(Frame)
+  CompleteFrame(Frame),
+  ConnectionClosed
 }
 
 impl fmt::Display for Frame {
@@ -119,7 +119,10 @@ impl Frame {
   pub fn read<B: BufRead>(stream: &mut B) -> Result<Transmission> {
     let mut line : String = String::new();
     // Empty lines are interpreted as heartbeats
-    try!(stream.read_line(&mut line));
+    let bytes: usize = try!(stream.read_line(&mut line));
+    if bytes == 0 {
+      return Ok(Transmission::ConnectionClosed);
+    }
     line = Frame::chomp_line(line);
     if line.len() == 0 {
       return Ok(Transmission::HeartBeat);

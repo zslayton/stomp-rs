@@ -5,7 +5,7 @@ use std::io::BufWriter;
 use frame::Transmission;
 use std::io::Result;
 use std::io::Error;
-use std::io::ErrorKind::InvalidInput;
+use std::io::ErrorKind;
 use frame::Frame;
 use std::cmp::max;
 use header::{self, StompHeaderSet};
@@ -59,12 +59,13 @@ impl Connection {
         Transmission::CompleteFrame(frame) => {
           connected_frame = frame;
           break;
-        }
+        },
+        Transmission::ConnectionClosed => return Err(Error::new(ErrorKind::ConnectionAborted, "Connection closed by remote host."))
       } 
     }
     match connected_frame.command.as_ref() {
       "CONNECTED" => debug!("Received CONNECTED frame: {}", connected_frame),
-       _ => return Err(Error::new(InvalidInput, "Could not connect."))
+       _ => return Err(Error::new(ErrorKind::InvalidInput, "Could not connect."))
     }
     match connected_frame.headers.get_heart_beat() {
       Some(header::HeartBeat(tx_ms, rx_ms)) => Ok((tx_ms, rx_ms)),

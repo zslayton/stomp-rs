@@ -2,34 +2,18 @@
 #![crate_type = "lib"]
 
 #![feature(collections)]
-#![feature(std_misc)]
-#![feature(old_io)]
 #![feature(slice_patterns)]
 
 #[macro_use]
 extern crate log;
 extern crate collections;
-
-extern crate core;
 extern crate mio;
 
 use session_builder::SessionBuilder;
 
-
-use mio::*;
-use mio::tcp::*;
-
-use frame::Frame;
-use std::io::BufReader;
-use std::io::Read;
-use core::ops::DerefMut;
-use frame::Transmission::{HeartBeat, CompleteFrame};
-
 pub fn session<'a>(host: &'a str, port: u16) -> SessionBuilder<'a>{
   SessionBuilder::new(host, port)
 }
-
-
 
 pub mod connection;
 pub mod header;

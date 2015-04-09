@@ -7,5 +7,5 @@ authors = ["Zack Slayton <zack@xtify.com>"]
 [dependencies.stomp]
 stomp = "*"
 
-#[dependencies.env_logger]
-#env_logger = "*"
+[dependencies.env_logger]
+env_logger = "*"
