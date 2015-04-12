@@ -25,8 +25,6 @@ use message_builder::MessageBuilder;
 use subscription_builder::SubscriptionBuilder;
 
 use mio::{EventLoop, Handler, Token, ReadHint, Timeout};
-//use mio::tcp::*;
-
 
 pub trait FrameHandler {
   fn on_frame(&mut self, &Frame);
@@ -88,12 +86,7 @@ impl <'a> Handler for Session<'a> {
 
   fn timeout(&mut self, event_loop: &mut EventLoop<Session<'a>>, timeout: StompTimeout) {
     match timeout {
-      StompTimeout::SendHeartBeat => {
-        debug!("Sending modified heartbeat"); // FIXME: Make this a function
-        let _ = event_loop.timeout_ms(StompTimeout::SendHeartBeat, self.tx_heartbeat_ms);
-        self.writer.write("\n".as_bytes()).ok().expect("Could not send a heartbeat. Connection failed.");
-        let _ = self.writer.flush();
-      },
+      StompTimeout::SendHeartBeat => self.send_heartbeat(event_loop),
       StompTimeout::ReceiveHeartBeat => {
         debug!("Did not receive a heartbeat in time.");
       },
@@ -103,11 +96,7 @@ impl <'a> Handler for Session<'a> {
   fn readable(&mut self, event_loop: &mut EventLoop<Session<'a>>, _token: Token, _: ReadHint) {
     debug!("Readable!");
     match Frame::read(&mut self.reader) {
-      Ok(HeartBeat) => {
-        debug!("Received HeartBeat");
-        self.rx_heartbeat_timeout.map(|timeout| event_loop.clear_timeout(timeout));
-        self.rx_heartbeat_timeout = Some(event_loop.timeout_ms(StompTimeout::ReceiveHeartBeat, self.rx_heartbeat_ms).unwrap());
-      },
+      Ok(HeartBeat) => self.on_heartbeat(event_loop),
       Ok(CompleteFrame(frame)) => {
         debug!("Received frame!:\n{}", frame);
         self.dispatch(frame);
@@ -143,6 +132,38 @@ impl <'a> Session <'a> {
       error_callback: Box::new(Session::default_error_callback) as Box<FrameHandler>
     }
   }
+
+  fn register_tx_heartbeat_timeout(&self, event_loop: &mut EventLoop<Session<'a>>) {
+    if self.tx_heartbeat_ms <= 0 {
+      return;
+    }
+    let _ = event_loop.timeout_ms(StompTimeout::SendHeartBeat, self.tx_heartbeat_ms);
+  }
+
+  fn register_rx_heartbeat_timeout(&mut self, event_loop: &mut EventLoop<Session<'a>>) {
+    if self.rx_heartbeat_ms <= 0 {
+      return;
+    }
+    let timeout = event_loop
+      .timeout_ms(StompTimeout::ReceiveHeartBeat, self.rx_heartbeat_ms)
+      .ok()
+      .expect("Could not register a timeout to receive a heartbeat.");
+    self.rx_heartbeat_timeout = Some(timeout);
+  }
+
+  fn send_heartbeat(&mut self, event_loop: &mut EventLoop<Session<'a>>) {
+    debug!("Sending heartbeat");
+    event_loop.timeout_ms(StompTimeout::SendHeartBeat, self.tx_heartbeat_ms).ok().expect("Could not register a heartbeat timeout with the event loop.");
+    self.writer.write("\n".as_bytes()).ok().expect("Could not send a heartbeat. Connection failed.");
+    let _ = self.writer.flush();
+    self.register_tx_heartbeat_timeout(event_loop);
+  }
+
+  fn on_heartbeat(&mut self, event_loop: &mut EventLoop<Session<'a>>) {
+    debug!("Received HeartBeat");
+    self.rx_heartbeat_timeout.map(|timeout| event_loop.clear_timeout(timeout));
+    self.register_rx_heartbeat_timeout(event_loop);
+  } 
 
   fn default_error_callback(frame : &Frame) {
     error!("ERROR received:\n{}", frame);
@@ -299,7 +320,9 @@ impl <'a> Session <'a> {
   pub fn listen(&mut self) -> Result<()> {
     let mut event_loop : EventLoop<Session<'a>> = EventLoop::new().unwrap();
     let _ = event_loop.register(self.reader.get_ref(), Token(0));
-    let _ = event_loop.timeout_ms(StompTimeout::SendHeartBeat, self.tx_heartbeat_ms);
+    //let _ = event_loop.timeout_ms(StompTimeout::SendHeartBeat, self.tx_heartbeat_ms);
+    self.register_tx_heartbeat_timeout(&mut event_loop);
+    self.register_rx_heartbeat_timeout(&mut event_loop);
     self.rx_heartbeat_timeout = Some(event_loop.timeout_ms(StompTimeout::ReceiveHeartBeat, self.rx_heartbeat_ms).unwrap());
     event_loop.run(self)
   }
