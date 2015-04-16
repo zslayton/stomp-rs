@@ -1,6 +1,6 @@
+Upstream changes to `rustc` have broken the `Timer`s underlying the heartbeat system. [Work is underway](https://github.com/zslayton/stomp-rs/issues/80) to migrate to `mio`. _Currently only compatible with rustc's nightly channel._
 stomp-rs ![Travis CI Build Status](https://api.travis-ci.org/zslayton/stomp-rs.png?branch=master)
 =====
-_Currently only compatible with rustc's nightly channel._
 
 `stomp-rs` provides a full [STOMP](http://stomp.github.io/stomp-specification-1.2.html) 1.2 client implementation for the [Rust programming language](http://www.rust-lang.org/). This allows programs written in Rust to interact with message queueing services like [ActiveMQ](http://activemq.apache.org/), [RabbitMQ](http://www.rabbitmq.com/), [HornetQ](http://hornetq.jboss.org/) and [OpenMQ](https://mq.java.net/).
 
