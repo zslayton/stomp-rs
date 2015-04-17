@@ -134,6 +134,7 @@ impl FrameBuffer {
   }
 
   fn reset_parse_state(&mut self) {
+    self.buffer.clear();
     self.parse_state.offset = 0;
     self.parse_state.command_range = None;
     self.parse_state.header_ranges.clear();
@@ -184,18 +185,38 @@ impl FrameBuffer {
   }
 
   fn read_command(&self) -> ReadCommandResult {
-    ReadCommandResult::Incomplete
+    let offset = self.parse_state.offset;
+    match self.find_next(offset, '\n' as u8) {
+      Some(index) => {
+        self.parse_state.offset += index - offset;
+        if index == offset {
+          ReadCommandResult::HeartBeat(ByteRange{start: offset, end: index})
+        } else {
+          ReadCommandResult::Command(ByteRange{start: offset, end: index})
+        }
+      }
+      None => ReadCommandResult::Incomplete
+    }
   }
 
   fn read_header(&self) -> ReadHeaderResult {
-    ReadHeaderResult::Incomplete
+    let offset = self.parse_state.offset;
+    match self.find_next(offset, '\n' as u8) {
+      Some(index) => {
+        self.parse_state.offset += index - offset;
+        ReadHeaderResult::Header(ByteRange{start: offset, end: index})
+      },
+      None => ReadHeaderResult::Incomplete
+    }
   }
-
+  
+  // Need to read both by Content-Length and by null byte
   fn read_body(&self) -> ReadBodyResult {
     ReadBodyResult::Incomplete
   }
 
   fn find_next(&self, offset: u32, needle: u8) -> Option<u32> {
+    // What's the len() of the underlying slice? capacity or size?
     let mut step = 0u32;
     for byte in &self.buffer[offset as usize..] {
       if *byte == needle {
