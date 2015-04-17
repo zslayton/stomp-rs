@@ -17,3 +17,6 @@ log = "*"
 
 [dependencies.mio]
 git = "https://github.com/carllerche/mio"
+
+[dependencies.bytes]
+git = "https://github.com/carllerche/bytes"

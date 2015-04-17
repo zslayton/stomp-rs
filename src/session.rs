@@ -63,7 +63,7 @@ const GRACE_PERIOD_MULTIPLIER: f64 = 2.0;
 pub struct Session <'a> { 
   pub connection : Connection,
   writer: BufWriter<TcpStream>,
-  reader: BufReader<TcpStream>,
+  pub reader: BufReader<TcpStream>,
   next_transaction_id: u32,
   next_subscription_id: u32,
   next_receipt_id: u32,
@@ -99,6 +99,7 @@ impl <'a> Handler for Session<'a> {
       Ok(HeartBeat) => self.on_heartbeat(event_loop),
       Ok(CompleteFrame(frame)) => {
         debug!("Received frame!:\n{}", frame);
+        self.reset_rx_heartbeat_timeout(event_loop);
         self.dispatch(frame);
       },
       Ok(ConnectionClosed) => panic!("Connection closed by remote host."),
@@ -126,7 +127,7 @@ impl <'a> Session <'a> {
       next_receipt_id: 0,
       rx_heartbeat_ms: modified_rx_heartbeat_ms as u64,
       rx_heartbeat_timeout: None,
-      tx_heartbeat_ms: tx_heartbeat_ms as u64 - 1000, //FIXME: Make this configurable
+      tx_heartbeat_ms: (tx_heartbeat_ms as f64 / 2f64) as u64, //FIXME: Make this configurable, change units
       subscriptions: HashMap::new(),
       receipt_handlers: HashMap::new(),
       error_callback: Box::new(Session::default_error_callback) as Box<FrameHandler>
@@ -135,6 +136,7 @@ impl <'a> Session <'a> {
 
   fn register_tx_heartbeat_timeout(&self, event_loop: &mut EventLoop<Session<'a>>) {
     if self.tx_heartbeat_ms <= 0 {
+      debug!("Heartbeat transmission ms is {}, no need to register a callback.", self.tx_heartbeat_ms);
       return;
     }
     let _ = event_loop.timeout_ms(StompTimeout::SendHeartBeat, self.tx_heartbeat_ms);
@@ -142,6 +144,7 @@ impl <'a> Session <'a> {
 
   fn register_rx_heartbeat_timeout(&mut self, event_loop: &mut EventLoop<Session<'a>>) {
     if self.rx_heartbeat_ms <= 0 {
+      debug!("Heartbeat receipt ms is {}, no need to register a callback.", self.tx_heartbeat_ms);
       return;
     }
     let timeout = event_loop
@@ -153,7 +156,6 @@ impl <'a> Session <'a> {
 
   fn send_heartbeat(&mut self, event_loop: &mut EventLoop<Session<'a>>) {
     debug!("Sending heartbeat");
-    event_loop.timeout_ms(StompTimeout::SendHeartBeat, self.tx_heartbeat_ms).ok().expect("Could not register a heartbeat timeout with the event loop.");
     self.writer.write("\n".as_bytes()).ok().expect("Could not send a heartbeat. Connection failed.");
     let _ = self.writer.flush();
     self.register_tx_heartbeat_timeout(event_loop);
@@ -161,9 +163,17 @@ impl <'a> Session <'a> {
 
   fn on_heartbeat(&mut self, event_loop: &mut EventLoop<Session<'a>>) {
     debug!("Received HeartBeat");
-    self.rx_heartbeat_timeout.map(|timeout| event_loop.clear_timeout(timeout));
+    self.reset_rx_heartbeat_timeout(event_loop);
+  }
+
+  fn reset_rx_heartbeat_timeout(&mut self, event_loop: &mut EventLoop<Session<'a>>) {
+    debug!("Resetting heartbeat rx timeout");
+    self.rx_heartbeat_timeout.map(|timeout| {
+      let result = event_loop.clear_timeout(timeout);
+      debug!("Reset complete -> {}", result);
+    });
     self.register_rx_heartbeat_timeout(event_loop);
-  } 
+  }
 
   fn default_error_callback(frame : &Frame) {
     error!("ERROR received:\n{}", frame);
@@ -320,10 +330,8 @@ impl <'a> Session <'a> {
   pub fn listen(&mut self) -> Result<()> {
     let mut event_loop : EventLoop<Session<'a>> = EventLoop::new().unwrap();
     let _ = event_loop.register(self.reader.get_ref(), Token(0));
-    //let _ = event_loop.timeout_ms(StompTimeout::SendHeartBeat, self.tx_heartbeat_ms);
     self.register_tx_heartbeat_timeout(&mut event_loop);
     self.register_rx_heartbeat_timeout(&mut event_loop);
-    self.rx_heartbeat_timeout = Some(event_loop.timeout_ms(StompTimeout::ReceiveHeartBeat, self.rx_heartbeat_ms).unwrap());
     event_loop.run(self)
   }
 }
