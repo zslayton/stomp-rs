@@ -71,7 +71,7 @@ enum ReadBodyResult {
 impl FrameBuffer {
   pub fn new() -> FrameBuffer {
     FrameBuffer {
-      buffer: Vec::with_capacity(512), 
+      buffer: Vec::with_capacity(512), //TODO: VecDeque?
       parse_state: ParseState::new()
     }
   }
@@ -134,7 +134,7 @@ impl FrameBuffer {
   }
 
   fn reset_parse_state(&mut self) {
-    self.buffer.clear();
+    self.buffer.clear(); // TODO: Not clear, shift/shrink
     self.parse_state.offset = 0;
     self.parse_state.command_range = None;
     self.parse_state.header_ranges.clear();
@@ -210,13 +210,13 @@ impl FrameBuffer {
     }
   }
   
-  // Need to read both by Content-Length and by null byte
+  // TODO: Need to read both by Content-Length and by null byte
   fn read_body(&self) -> ReadBodyResult {
     ReadBodyResult::Incomplete
   }
 
   fn find_next(&self, offset: u32, needle: u8) -> Option<u32> {
-    // What's the len() of the underlying slice? capacity or size?
+    // TODO: What's the len() of the underlying slice? capacity or size?
     let mut step = 0u32;
     for byte in &self.buffer[offset as usize..] {
       if *byte == needle {
