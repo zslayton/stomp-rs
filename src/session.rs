@@ -1,5 +1,6 @@
 use std::collections::hash_map::HashMap;
 use std::io::BufReader;
+use std::io::Read;
 use std::io::Write;
 use std::io::BufWriter;
 use std::io::Result;
@@ -23,6 +24,7 @@ use header::StompHeaderSet;
 use transaction::Transaction;
 use message_builder::MessageBuilder;
 use subscription_builder::SubscriptionBuilder;
+use frame_buffer::FrameBuffer;
 
 use mio::{EventLoop, Handler, Token, ReadHint, Timeout};
 
@@ -58,12 +60,13 @@ impl<'a, T> ReceiptHandler<'a, T> where T: 'a + ToFrameHandler<'a> {
   }
 }
 
+const READ_BUFFER_SIZE: usize = 64 * 1024;
 const GRACE_PERIOD_MULTIPLIER: f64 = 2.0;
 
 pub struct Session <'a> { 
   pub connection : Connection,
-  writer: BufWriter<TcpStream>,
-  pub reader: BufReader<TcpStream>,
+  read_buffer: [u8; READ_BUFFER_SIZE],
+  frame_buffer: FrameBuffer,
   next_transaction_id: u32,
   next_subscription_id: u32,
   next_receipt_id: u32,
@@ -95,33 +98,43 @@ impl <'a> Handler for Session<'a> {
 
   fn readable(&mut self, event_loop: &mut EventLoop<Session<'a>>, _token: Token, _: ReadHint) {
     debug!("Readable!");
-    match Frame::read(&mut self.reader) {
-      Ok(HeartBeat) => self.on_heartbeat(event_loop),
-      Ok(CompleteFrame(frame)) => {
-        debug!("Received frame!:\n{}", frame);
-        self.reset_rx_heartbeat_timeout(event_loop);
-        self.dispatch(frame);
-      },
-      Ok(ConnectionClosed) => panic!("Connection closed by remote host."),
-      Err(_) => panic!("Failed to receive Heartbeat or frame.")
+    debug!("Buffer size: {}", &mut self.read_buffer.len());
+    debug!("Frame buffer length: {}", &mut self.frame_buffer.len());
+    let bytes_read = match self.connection.tcp_stream.read(&mut self.read_buffer){
+      Ok(0) => panic!("Read 0 bytes. Connection closed by remote host."),
+      Ok(bytes_read) => bytes_read,
+      Err(error) => panic!("Error while reading: {}", error)
+    };
+    debug!("Read {} bytes", bytes_read);
+    self.frame_buffer.append(&self.read_buffer[..bytes_read]);
+    loop {
+      debug!("Reading from frame buffer");
+      match self.frame_buffer.read_transmission() {
+        Some(HeartBeat) => self.on_heartbeat(event_loop),
+        Some(CompleteFrame(frame)) => {
+          debug!("Received frame!:\n{}", frame);
+          self.reset_rx_heartbeat_timeout(event_loop);
+          self.dispatch(frame);
+        },
+        Some(ConnectionClosed) => panic!("Connection closed by remote host."),
+        None => {
+          debug!("Done reading from frame buffer.");
+          break;
+        }
+      }
     }
   } 
 }
 
 impl <'a> Session <'a> {
   pub fn new(connection: Connection, tx_heartbeat_ms: u32, rx_heartbeat_ms: u32) -> Session<'a> {
-    let reading_stream = connection.tcp_stream.try_clone().unwrap();
-    let writing_stream = reading_stream.try_clone().unwrap();
-
     let modified_rx_heartbeat_ms : u32 = ((rx_heartbeat_ms as f64) * GRACE_PERIOD_MULTIPLIER) as u32;
-
-    let reader = BufReader::new(reading_stream);
-    let writer = BufWriter::new(writing_stream);
 
     Session {
       connection: connection,
-      reader: reader,
-      writer: writer,
+      frame_buffer: FrameBuffer::new(),
+      //TODO: Make this configurable
+      read_buffer: [0; READ_BUFFER_SIZE],
       next_transaction_id: 0,
       next_subscription_id: 0,
       next_receipt_id: 0,
@@ -156,8 +169,8 @@ impl <'a> Session <'a> {
 
   fn send_heartbeat(&mut self, event_loop: &mut EventLoop<Session<'a>>) {
     debug!("Sending heartbeat");
-    self.writer.write("\n".as_bytes()).ok().expect("Could not send a heartbeat. Connection failed.");
-    let _ = self.writer.flush();
+    self.connection.tcp_stream.write("\n".as_bytes()).ok().expect("Could not send a heartbeat. Connection failed.");
+    let _ = self.connection.tcp_stream.flush();
     self.register_tx_heartbeat_timeout(event_loop);
   }
 
@@ -261,7 +274,7 @@ impl <'a> Session <'a> {
   }
 
   pub fn send(&mut self, frame: Frame) -> Result<()> {
-    match frame.write(&mut self.writer) {
+    match frame.write(&mut self.connection.tcp_stream) {
       Ok(_) => Ok(()),//FIXME: Replace 'Other' below with a more meaningful ErrorKind
       Err(_) => Err(Error::new(Other, "Could not send frame: the connection to the server was lost."))
     }
@@ -329,7 +342,7 @@ impl <'a> Session <'a> {
 
   pub fn listen(&mut self) -> Result<()> {
     let mut event_loop : EventLoop<Session<'a>> = EventLoop::new().unwrap();
-    let _ = event_loop.register(self.reader.get_ref(), Token(0));
+    let _ = event_loop.register(&self.connection.tcp_stream, Token(0));
     self.register_tx_heartbeat_timeout(&mut event_loop);
     self.register_rx_heartbeat_timeout(&mut event_loop);
     event_loop.run(self)

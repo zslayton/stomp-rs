@@ -13,23 +13,18 @@ use std::str::from_utf8;
 use std::fmt;
 use std::fmt::Formatter;
 use frame::{Frame, Transmission};
+use std::collections::VecDeque;
 
 pub struct FrameBuffer {
-  buffer: Vec<u8>,
+  buffer: VecDeque<u8>, 
   parse_state: ParseState
-}
-
-#[derive(Clone, Copy)]
-struct ByteRange {
-  pub start: u32,
-  pub end : u32
 }
 
 struct ParseState {
   offset: u32,
-  command_range: Option<ByteRange>,
-  header_ranges: Vec<ByteRange>,
-  body_range: Option<ByteRange>,
+  command: Option<String>,
+  headers: HeaderList,
+  body: Option<Vec<u8>>,
   section: FrameSection,
 }
 
@@ -37,9 +32,9 @@ impl ParseState {
   fn new() -> ParseState {
     ParseState {
       offset: 0,
-      command_range: None,
-      header_ranges: Vec::new(),
-      body_range: None,
+      command: None,
+      headers: header_list![],
+      body: None,
       section: FrameSection::Command
     }
   }
@@ -53,31 +48,38 @@ enum FrameSection {
 
 enum ReadCommandResult {
   HeartBeat,
-  Command(ByteRange),
+  Command(String),
   Incomplete
 }
 
 enum ReadHeaderResult {
-  Header(ByteRange),
+  Header(Header),
   EndOfHeaders,
   Incomplete
 }
 
 enum ReadBodyResult {
-  Body(ByteRange),
+  Body(Vec<u8>),
   Incomplete
 }
 
 impl FrameBuffer {
   pub fn new() -> FrameBuffer {
     FrameBuffer {
-      buffer: Vec::with_capacity(512), //TODO: VecDeque?
+      buffer: VecDeque::with_capacity(512), //TODO: VecDeque?
       parse_state: ParseState::new()
     }
   }
+ 
+  pub fn len(&self) -> usize {
+    self.buffer.len()
+  }
 
   pub fn append(&mut self, bytes: &[u8]) { // TODO: Return result?
-    self.buffer.push_all(bytes);
+    for byte in bytes {
+      self.buffer.push_back(*byte);
+    }
+    debug!("Copied {} bytes into the frame buffer.", bytes.len());
   }
 
   pub fn read_transmission(&mut self) -> Option<Transmission> {
@@ -92,8 +94,8 @@ impl FrameBuffer {
     debug!("Parsing command.");
     match self.read_command() {
       ReadCommandResult::HeartBeat => Some(Transmission::HeartBeat),
-      ReadCommandResult::Command(byte_range) => {
-        self.parse_state.command_range = Some(byte_range);
+      ReadCommandResult::Command(command_string) => {
+        self.parse_state.command = Some(command_string);
         self.parse_state.section = FrameSection::Headers;
         self.resume_parsing_at_headers()
       },
@@ -104,8 +106,8 @@ impl FrameBuffer {
   fn resume_parsing_at_headers(&mut self) -> Option<Transmission> {
     debug!("Parsing headers.");
     match self.read_header() {
-      ReadHeaderResult::Header(byte_range) => {
-        self.parse_state.header_ranges.push(byte_range);
+      ReadHeaderResult::Header(header) => {
+        self.parse_state.headers.push(header);
         self.resume_parsing_at_headers()
       },
       ReadHeaderResult::EndOfHeaders => {
@@ -116,15 +118,22 @@ impl FrameBuffer {
     }
   }
 
+//TODO: Eliminate clone()s
   fn resume_parsing_at_body(&mut self) -> Option<Transmission> {
     debug!("Parsing body.");
     match self.read_body() {
-      ReadBodyResult::Body(byte_range) => {
-        self.parse_state.body_range = Some(byte_range);
+      ReadBodyResult::Body(body_bytes) => {
+        //self.parse_state.body = Some(body_bytes);
+        let command = match self.parse_state.command {
+          Some(ref command) => command.to_string(),
+          None => panic!("No COMMAND found.")
+        };
+        let headers = self.parse_state.headers.clone();
+        let body = body_bytes;
         let frame = Frame {
-          command: self.create_command_string(),
-          headers: self.create_header_list(),
-          body: self.create_body()
+          command: command,
+          headers: headers,
+          body: body
         };
         self.reset_parse_state();
         Some(Transmission::CompleteFrame(frame))
@@ -134,93 +143,145 @@ impl FrameBuffer {
   }
 
   fn reset_parse_state(&mut self) {
-    self.buffer.clear(); // TODO: Not clear, shift/shrink
     self.parse_state.offset = 0;
-    self.parse_state.command_range = None;
-    self.parse_state.header_ranges.clear();
-    self.parse_state.body_range = None;
+    self.parse_state.command = None;
+    self.parse_state.headers = header_list![];
+    self.parse_state.body = None;
     self.parse_state.section = FrameSection::Command;
   }
 
-  fn create_command_string(&mut self) -> String {
-    let buffer : &[u8] = self.buffer.as_ref();
-    let command_range = self.parse_state.command_range.expect("No command range was found.");
-    let start = command_range.start;
-    let end = command_range.end;
-    let command_slice = &buffer[start as usize..end as usize];
-    let command_str : &str = match from_utf8(&command_slice) {
-      Ok(command_str) => command_str,
-      _ =>panic!("Command was not utf8.")
-    };
-    return command_str.to_string();
-  }
-
-  fn create_header_list(&mut self) -> HeaderList {
-    let buffer : &[u8] = self.buffer.as_ref();
-    let mut header_list = header_list![];
-    for header_range in &self.parse_state.header_ranges {
-      let start = header_range.start;
-      let end = header_range.end;
-      let header_slice = &buffer[start as usize..end as usize];
-      let header_str : &str = match from_utf8(&header_slice) {
-        Ok(header_str) => header_str,
-        _ =>panic!("Header was not utf8.")
+  // Replace these methods with bridge-buffer concept
+  fn read_into_vec(&mut self, n: usize) -> Vec<u8> {
+    let mut vec = Vec::with_capacity(n);
+    for _ in 0..n {
+      let byte = match self.buffer.pop_front() {
+        Some(byte) => byte,
+        None => panic!("Attempted to read beyond the end of the buffer!")
       };
-      let header = Header::decode_string(header_str);
-      match header {
-        Some(header) => header_list.push(header),
-        None => panic!("Header was not decodable.")
-      } 
+      vec.push(byte);
     }
-    header_list    
+    debug!("Removed {} bytes from frame buffer, new size: {}", n, self.buffer.len());
+    vec 
+  }
+ 
+  // Wasteful with allocations 
+  fn read_into_string(&mut self, n: usize) -> String {
+    let vec = self.read_into_vec(n); 
+    let string = from_utf8(&vec)
+      .ok()
+      .expect("Attempted to read a string that was not utf8.");
+    return string.to_string();
   }
 
-  fn create_body(&mut self) -> Vec<u8> {
-    let buffer : &[u8] = self.buffer.as_ref();
-    let body_range = self.parse_state.body_range.expect("No body range was found.");
-    let start = body_range.start;
-    let end = body_range.end;
-    let body_slice = &buffer[start as usize ..end as usize];
-    return Vec::from(body_slice);
+  fn discard(&mut self, n: usize) {
+    for _ in 0..n {
+      let _ = &mut self.buffer.pop_front();
+    }
+  }
+  
+  fn chomp(mut line: String) -> String {
+    // This may be suboptimal, but fine for now
+    let chomped_length : usize;
+    {
+      let chars_to_remove : &[char] = &['\r', '\n'];
+      let trimmed_line : &str = line.trim_right_matches(chars_to_remove);
+      chomped_length = trimmed_line.len();
+    }
+    line.truncate(chomped_length);
+    line
   }
 
-  fn read_command(&self) -> ReadCommandResult {
-    let offset = self.parse_state.offset;
-    match self.find_next(offset, '\n' as u8) {
+  fn read_command(&mut self) -> ReadCommandResult {
+    use frame_buffer::ReadCommandResult::*;
+    //TODO: check for \r\n
+    match self.find_next('\n' as u8) {
+      Some(0) => {
+        debug!("Found Heartbeat");
+        let num_bytes = 1;
+        self.discard(num_bytes);
+        HeartBeat
+      },
       Some(index) => {
-        self.parse_state.offset += index - offset;
-        if index == offset {
-          ReadCommandResult::HeartBeat(ByteRange{start: offset, end: index})
-        } else {
-          ReadCommandResult::Command(ByteRange{start: offset, end: index})
+        debug!("Found command ending @ index {}", index);
+        let num_bytes = index + 1;
+        let command = self.read_into_string(num_bytes as usize);
+        let command = FrameBuffer::chomp(command);
+        debug!("Command -> '{}'", command);
+        Command(command)
+      },
+      None => Incomplete
+    }
+  }
+
+  fn read_header(&mut self) -> ReadHeaderResult {
+    match self.find_next('\n' as u8) {
+      Some(index) => {
+        debug!("Found header ending @ index {}", index);
+        let num_bytes = index + 1;
+        let header_string = self.read_into_string(num_bytes as usize);
+        let header_string = FrameBuffer::chomp(header_string); 
+        debug!("Header -> '{}'", header_string);
+        if(header_string == "") {
+          return ReadHeaderResult::EndOfHeaders;
         }
-      }
-      None => ReadCommandResult::Incomplete
-    }
-  }
-
-  fn read_header(&self) -> ReadHeaderResult {
-    let offset = self.parse_state.offset;
-    match self.find_next(offset, '\n' as u8) {
-      Some(index) => {
-        self.parse_state.offset += index - offset;
-        ReadHeaderResult::Header(ByteRange{start: offset, end: index})
+        let header = Header::decode_string(&header_string).expect("Invalid header encountered.");
+        ReadHeaderResult::Header(header)
       },
       None => ReadHeaderResult::Incomplete
     }
   }
   
   // TODO: Need to read both by Content-Length and by null byte
-  fn read_body(&self) -> ReadBodyResult {
-    ReadBodyResult::Incomplete
+  // This is easier if we've already created the header set
+  fn read_body(&mut self) -> ReadBodyResult {
+    let maybe_body : Option<Vec<u8>> = match self.parse_state.headers.get_content_length() {
+      Some(ContentLength(num_bytes)) => self.read_body_by_content_length(num_bytes as usize),
+      None => self.read_body_by_null_octet()
+    };
+    match maybe_body {
+      Some(body) => ReadBodyResult::Body(body),
+      None => ReadBodyResult::Incomplete
+    }
   }
 
-  fn find_next(&self, offset: u32, needle: u8) -> Option<u32> {
-    // TODO: What's the len() of the underlying slice? capacity or size?
+  fn read_body_by_content_length(&mut self, content_length: usize) -> Option<Vec<u8>> {
+    debug!("Reading body by content length.");
+    if self.buffer.len() < content_length {
+      debug!("Not enough bytes to form body; needed {}, only had {}.", content_length, self.buffer.len());
+      return None;
+    }
+    let body = self.read_into_vec(content_length);
+    debug!("Body -> '{}'", FrameBuffer::body_as_string(&body));
+    Some(body)
+  }
+
+  fn read_body_by_null_octet(&mut self) -> Option<Vec<u8>> {
+    debug!("Reading body by null octet.");
+    match self.find_next(0u8) {
+      Some(index) => {
+        debug!("Found body ending @ index {}", index);
+        let num_bytes = index + 1;
+        let mut body = self.read_into_vec(num_bytes as usize);
+        body.pop(); // Discard null octet
+        debug!("Body -> '{}'", FrameBuffer::body_as_string(&body));
+        Some(body) 
+      },
+      None => None
+    }
+  }
+
+  fn body_as_string(body: &Vec<u8>) -> &str {
+    match from_utf8(&body) {
+      Ok(ref s) => *s,
+      Err(_) => "<Non-utf8 Binary Content>"
+    }
+  }
+
+  fn find_next(&self, needle: u8) -> Option<u32> {
     let mut step = 0u32;
-    for byte in &self.buffer[offset as usize..] {
+    for byte in &self.buffer {
       if *byte == needle {
-        return Some(offset + step);
+        return Some(step);
       }
       step += 1;
     }
