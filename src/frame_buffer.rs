@@ -195,17 +195,26 @@ impl FrameBuffer {
     use frame_buffer::ReadCommandResult::*;
     //TODO: check for \r\n
     match self.find_next('\n' as u8) {
-      Some(0) => {
+/*      Some(0) => {
         debug!("Found Heartbeat");
         let num_bytes = 1;
         self.discard(num_bytes);
         HeartBeat
       },
+*/
       Some(index) => {
         debug!("Found command ending @ index {}", index);
         let num_bytes = index + 1;
         let command = self.read_into_string(num_bytes as usize);
         let command = FrameBuffer::chomp(command);
+        debug!("Chomped length: {}", command.len());
+        if command == "" {
+          debug!("Found HeartBeat");
+          return HeartBeat;
+        }
+        if command.len() == 1 {
+          debug!("Byte: {}", command.as_bytes()[0]);
+        }
         debug!("Command -> '{}'", command);
         Command(command)
       },
@@ -221,7 +230,7 @@ impl FrameBuffer {
         let header_string = self.read_into_string(num_bytes as usize);
         let header_string = FrameBuffer::chomp(header_string); 
         debug!("Header -> '{}'", header_string);
-        if(header_string == "") {
+        if header_string == "" {
           return ReadHeaderResult::EndOfHeaders;
         }
         let header = Header::decode_string(&header_string).expect("Invalid header encountered.");
@@ -246,11 +255,13 @@ impl FrameBuffer {
 
   fn read_body_by_content_length(&mut self, content_length: usize) -> Option<Vec<u8>> {
     debug!("Reading body by content length.");
-    if self.buffer.len() < content_length {
+    let bytes_needed = content_length + 1; // null octet
+    if self.buffer.len() < bytes_needed {
       debug!("Not enough bytes to form body; needed {}, only had {}.", content_length, self.buffer.len());
       return None;
     }
-    let body = self.read_into_vec(content_length);
+    let mut body = self.read_into_vec(bytes_needed);
+    body.pop(); // Discard null octet
     debug!("Body -> '{}'", FrameBuffer::body_as_string(&body));
     Some(body)
   }
