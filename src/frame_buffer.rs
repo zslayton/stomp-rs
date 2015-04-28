@@ -66,7 +66,7 @@ enum ReadBodyResult {
 impl FrameBuffer {
   pub fn new() -> FrameBuffer {
     FrameBuffer {
-      buffer: VecDeque::with_capacity(512), //TODO: VecDeque?
+      buffer: VecDeque::with_capacity(1024 * 65), //TODO: VecDeque?
       parse_state: ParseState::new()
     }
   }

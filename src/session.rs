@@ -26,7 +26,7 @@ use message_builder::MessageBuilder;
 use subscription_builder::SubscriptionBuilder;
 use frame_buffer::FrameBuffer;
 
-use mio::{EventLoop, Handler, Token, ReadHint, Timeout};
+use mio::{EventLoop, EventLoopConfig, Handler, Token, ReadHint, Timeout};
 
 pub trait FrameHandler {
   fn on_frame(&mut self, &Frame);
@@ -54,7 +54,7 @@ pub struct ReceiptHandler<'a, T> where T: 'a + ToFrameHandler<'a> {
 }
 
 impl<'a, T> ReceiptHandler<'a, T> where T: 'a + ToFrameHandler<'a> {
-  pub fn new(val: T) -> ReceiptHandler<'a T> {
+  pub fn new(val: T) -> ReceiptHandler<'a, T> {
     let r = ReceiptHandler { handler: val, _marker: PhantomData };
     r
   }
@@ -107,6 +107,7 @@ impl <'a> Handler for Session<'a> {
     };
     debug!("Read {} bytes", bytes_read);
     self.frame_buffer.append(&self.read_buffer[..bytes_read]);
+    let mut num_frames = 0u32;
     loop {
       debug!("Reading from frame buffer");
       match self.frame_buffer.read_transmission() {
@@ -115,10 +116,11 @@ impl <'a> Handler for Session<'a> {
           debug!("Received frame!:\n{}", frame);
           self.reset_rx_heartbeat_timeout(event_loop);
           self.dispatch(frame);
+          num_frames += 1;
         },
         Some(ConnectionClosed) => panic!("Connection closed by remote host."),
         None => {
-          debug!("Done reading from frame buffer.");
+          debug!("Done. Read {} frames.", num_frames);
           break;
         }
       }
@@ -341,7 +343,15 @@ impl <'a> Session <'a> {
   }
 
   pub fn listen(&mut self) -> Result<()> {
-    let mut event_loop : EventLoop<Session<'a>> = EventLoop::new().unwrap();
+    //let mut event_loop : EventLoop<Session<'a>> = EventLoop::new().unwrap();
+    let mut event_loop : EventLoop<Session<'a>> = EventLoop::configured(EventLoopConfig {
+      io_poll_timeout_ms: 1_000,
+      notify_capacity: 4_096,
+      messages_per_tick: 256,
+      timer_tick_ms: 20,
+      timer_wheel_size: 1_024,
+      timer_capacity: 65_536
+    }).unwrap();
     let _ = event_loop.register(&self.connection.tcp_stream, Token(0));
     self.register_tx_heartbeat_timeout(&mut event_loop);
     self.register_rx_heartbeat_timeout(&mut event_loop);
