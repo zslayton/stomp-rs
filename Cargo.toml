@@ -14,12 +14,5 @@ name = "stomp"
 
 [dependencies]
 "unicode-segmentation" = "*"
-
-[dependencies.log]
-log = "*"
-
-[dependencies.mio]
-git = "https://github.com/carllerche/mio"
-
-[dependencies.bytes]
-git = "https://github.com/carllerche/bytes"
+"log" = "*"
+"mio" = "*"

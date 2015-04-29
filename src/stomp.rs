@@ -7,7 +7,6 @@
 #[macro_use]
 extern crate log;
 extern crate collections;
-extern crate bytes;
 extern crate mio;
 extern crate unicode_segmentation;
 
