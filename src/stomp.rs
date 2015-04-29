@@ -2,13 +2,14 @@
 #![crate_type = "lib"]
 
 #![feature(collections)]
-#![feature(std_misc)]
-#![feature(old_io)]
 #![feature(slice_patterns)]
 
 #[macro_use]
 extern crate log;
 extern crate collections;
+extern crate bytes;
+extern crate mio;
+extern crate unicode_segmentation;
 
 use session_builder::SessionBuilder;
 
@@ -19,6 +20,7 @@ pub fn session<'a>(host: &'a str, port: u16) -> SessionBuilder<'a>{
 pub mod connection;
 pub mod header;
 pub mod frame;
+pub mod frame_buffer;
 pub mod session;
 pub mod subscription;
 pub mod transaction;

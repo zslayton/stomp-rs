@@ -2,4 +2,5 @@ src/**/target/**
 target/**
 examples/**/target/**
 **.swp
+**callgrind.out.*
 Cargo.lock

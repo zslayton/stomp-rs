@@ -27,27 +27,27 @@ fn main() {
     println!("Something went horribly wrong: {}", frame);
   });
 
-  let sub_id = session.subscription(destination, |frame: &Frame| {
+  let _ = session.subscription(destination, |frame: &Frame| {
     message_count += 1;
     println!("Received message #{}:\n{}", message_count, frame);
     Ack
   })
   .with(AckMode::Client)
   .with(Header::new("custom-subscription-header", "lozenge"))
-  .with(ReceiptHandler::new(|frame: &Frame| println!("Subscribed successfully.")))
+  .with(ReceiptHandler::new(|_: &Frame| println!("Subscribed successfully.")))
   .start();
 
-  session.message(destination, "Animal").send();
-  session.message(destination, "Vegetable").send();
-  session.message(destination, "Mineral").send();
+  let _ = session.message(destination, "Animal").send();
+  let _ = session.message(destination, "Vegetable").send();
+  let _ = session.message(destination, "Mineral").send();
 
-  session.message(destination, "Hypoteneuse".as_bytes())
+  let _ = session.message(destination, "Hypoteneuse".as_bytes())
     .with(ContentType("text/plain"))
     .with(Header::new("persistent", "true"))
-    .with(ReceiptHandler::new(|frame: &Frame| println!("Got a RECEIPT for 'Hypoteneuse'")))
+    .with(ReceiptHandler::new(|_: &Frame| println!("Got a RECEIPT for 'Hypoteneuse'")))
     .send();
 
-  session.listen(); // Loops infinitely, awaiting messages
+  let _ = session.listen(); // Loops infinitely, awaiting messages
 
-  session.disconnect();
+  let _ = session.disconnect();
 }
