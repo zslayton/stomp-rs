@@ -12,7 +12,6 @@ pub struct FrameBuffer {
 }
 
 struct ParseState {
-  offset: u32,
   command: Option<String>,
   headers: HeaderList,
   body: Option<Vec<u8>>,
@@ -22,7 +21,6 @@ struct ParseState {
 impl ParseState {
   fn new() -> ParseState {
     ParseState {
-      offset: 0,
       command: None,
       headers: header_list![],
       body: None,
@@ -56,17 +54,21 @@ enum ReadBodyResult {
 
 impl FrameBuffer {
   pub fn new() -> FrameBuffer {
+    FrameBuffer::with_capacity(1024 * 64)
+  }
+ 
+  pub fn with_capacity(capacity: usize) -> FrameBuffer {
     FrameBuffer {
-      buffer: VecDeque::with_capacity(1024 * 65), //TODO: VecDeque?
+      buffer: VecDeque::with_capacity(capacity),
       parse_state: ParseState::new()
     }
   }
- 
+
   pub fn len(&self) -> usize {
     self.buffer.len()
   }
 
-  pub fn append(&mut self, bytes: &[u8]) { // TODO: Return result?
+  pub fn append(&mut self, bytes: &[u8]) {
     for byte in bytes {
       self.buffer.push_back(*byte);
     }
@@ -114,7 +116,6 @@ impl FrameBuffer {
     debug!("Parsing body.");
     match self.read_body() {
       ReadBodyResult::Body(body_bytes) => {
-        //self.parse_state.body = Some(body_bytes);
         let command = match self.parse_state.command {
           Some(ref command) => command.to_string(),
           None => panic!("No COMMAND found.")
@@ -134,7 +135,6 @@ impl FrameBuffer {
   }
 
   fn reset_parse_state(&mut self) {
-    self.parse_state.offset = 0;
     self.parse_state.command = None;
     self.parse_state.headers = header_list![];
     self.parse_state.body = None;
