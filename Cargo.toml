@@ -12,6 +12,9 @@ license = "MIT"
 [lib]
 name = "stomp"
 
+[dependencies]
+"unicode-segmentation" = "*"
+
 [dependencies.log]
 log = "*"
 

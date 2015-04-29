@@ -1,12 +1,9 @@
 use std::collections::hash_map::HashMap;
-use std::io::BufReader;
 use std::io::Read;
 use std::io::Write;
-use std::io::BufWriter;
 use std::io::Result;
 use std::io::Error;
 use std::io::ErrorKind::{Other};
-use std::net::TcpStream;
 use std::marker::PhantomData;
 use connection::Connection;
 use subscription::AckMode;

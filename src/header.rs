@@ -2,6 +2,7 @@
 #![macro_use]
 #![allow(non_camel_case_types)]
 use collections::slice::Iter;
+use unicode_segmentation::UnicodeSegmentation;
 
 // Ideally this would be a simple typedef. However:
 // See Rust bug #11047: https://github.com/mozilla/rust/issues/11047
@@ -93,7 +94,7 @@ impl Header {
   fn decode_value(value: &str) -> String {
     let mut is_escaped = false;
     let mut decoded = String::new();
-    for grapheme in value.graphemes(true) {
+    for grapheme in UnicodeSegmentation::graphemes(value, true) {
       if !is_escaped {
         match grapheme {
           r"\" => is_escaped = true,
@@ -117,7 +118,7 @@ impl Header {
 
   fn encode_value(value: &str) -> String {
     let mut encoded = String::new();
-    for grapheme in value.graphemes(true) {
+    for grapheme in UnicodeSegmentation::graphemes(value, true) {
       match grapheme {
         "\\" => encoded.push_str(r"\\"),// Order is significant
         "\r" => encoded.push_str(r"\r"),
@@ -354,7 +355,7 @@ impl StompHeaderSet for HeaderList {
 #[macro_export]
 macro_rules! header_list [
   ($($header: expr), *) => ({
-    let mut header_list = HeaderList::new();
+    let header_list = HeaderList::new();
     $(header_list.push($header);)*
     header_list
   });

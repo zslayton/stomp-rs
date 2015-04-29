@@ -2,16 +2,7 @@ use header::HeaderList;
 use header::Header;
 use header::ContentLength;
 use header::StompHeaderSet;
-use subscription::AckMode;
-use std::io::Result;
-use std::io::Error;
-use std::io::ErrorKind::InvalidInput;
-use std::io::Write;
-use std::io::Read;
-use std::io::BufRead;
 use std::str::from_utf8;
-use std::fmt;
-use std::fmt::Formatter;
 use frame::{Frame, Transmission};
 use std::collections::VecDeque;
 
@@ -173,12 +164,6 @@ impl FrameBuffer {
     return string.to_string();
   }
 
-  fn discard(&mut self, n: usize) {
-    for _ in 0..n {
-      let _ = &mut self.buffer.pop_front();
-    }
-  }
-  
   fn chomp(mut line: String) -> String {
     // This may be suboptimal, but fine for now
     let chomped_length : usize;
