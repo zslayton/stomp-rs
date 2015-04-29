@@ -1,8 +1,10 @@
 [package]
-
-name = "evented"
-version = "0.0.1"
+name = "send_lots"
+version = "0.1.0"
 authors = ["Zack Slayton <zack.slayton@gmail.com>"]
 
 [dependencies.stomp]
 stomp = "*"
+
+[dependencies.env_logger]
+env_logger = "*"
