@@ -178,15 +178,7 @@ impl FrameBuffer {
 
   fn read_command(&mut self) -> ReadCommandResult {
     use frame_buffer::ReadCommandResult::*;
-    //TODO: check for \r\n
     match self.find_next('\n' as u8) {
-/*      Some(0) => {
-        debug!("Found Heartbeat");
-        let num_bytes = 1;
-        self.discard(num_bytes);
-        HeartBeat
-      },
-*/
       Some(index) => {
         debug!("Found command ending @ index {}", index);
         let num_bytes = index + 1;
@@ -225,8 +217,6 @@ impl FrameBuffer {
     }
   }
   
-  // TODO: Need to read both by Content-Length and by null byte
-  // This is easier if we've already created the header set
   fn read_body(&mut self) -> ReadBodyResult {
     let maybe_body : Option<Vec<u8>> = match self.parse_state.headers.get_content_length() {
       Some(ContentLength(num_bytes)) => self.read_body_by_content_length(num_bytes as usize),
