@@ -90,22 +90,43 @@ impl Header {
     }
   }
 
-  //TODO: Optimize this method.
   fn decode_value(value: &str) -> String {
-    value
-      .replace(r"\c", ":")
-      .replace(r"\n", "\n")
-      .replace(r"\r", "\r")
-      .replace(r"\\", "\\")
+    let mut is_escaped = false;
+    let mut decoded = String::new();
+    for grapheme in value.graphemes(true) {
+      if !is_escaped {
+        match grapheme {
+          r"\" => is_escaped = true,
+          g => decoded.push_str(g)
+        }
+        continue;
+      }
+    
+      match grapheme {
+        r"c" => decoded.push_str(":"),
+        r"r" => decoded.push_str("\r"),
+        r"n" => decoded.push_str("\n"),
+        r"\" => decoded.push_str("\\"),
+        g => panic!("Unrecognized escape sequence encountered: '\\{}'.", g)
+      }
+      
+      is_escaped = false;
+    }
+    decoded
   }
 
-//TODO: Optimize this method.
   fn encode_value(value: &str) -> String {
-    value
-      .replace("\\", r"\\") // Order is significant
-      .replace("\r", r"\r")
-      .replace("\n", r"\n")
-      .replace(":", r"\c")
+    let mut encoded = String::new();
+    for grapheme in value.graphemes(true) {
+      match grapheme {
+        "\\" => encoded.push_str(r"\\"),// Order is significant
+        "\r" => encoded.push_str(r"\r"),
+        "\n" => encoded.push_str(r"\n"),
+        ":" => encoded.push_str(r"\c"),
+        g => encoded.push_str(g)
+      }
+    }
+    encoded
   }
 
   pub fn get_raw<'a>(&'a self) -> &'a str {
@@ -344,3 +365,59 @@ macro_rules! header_list [
   })
 
 ];
+
+#[test]
+fn encode_return_carriage() {
+  let unencoded = "Hello\rWorld";
+  let encoded = r"Hello\rWorld";
+  assert!(encoded == Header::encode_value(unencoded));
+}
+
+#[test]
+fn decode_return_carriage() {
+  let unencoded = "Hello\rWorld";
+  let encoded = r"Hello\rWorld";
+  assert!(unencoded == Header::decode_value(encoded));
+}
+
+#[test]
+fn encode_newline() {
+  let unencoded = "Hello\nWorld";
+  let encoded = r"Hello\nWorld";
+  assert!(encoded == Header::encode_value(unencoded));
+}
+
+#[test]
+fn decode_newline() {
+  let unencoded = "Hello\nWorld";
+  let encoded = r"Hello\nWorld";
+  assert!(unencoded == Header::decode_value(encoded));
+}
+
+#[test]
+fn encode_colon() {
+  let unencoded = "Hello:World";
+  let encoded = r"Hello\cWorld";
+  assert!(encoded == Header::encode_value(unencoded));
+}
+
+#[test]
+fn decode_colon() {
+  let unencoded = "Hello:World";
+  let encoded = r"Hello\cWorld";
+  assert!(unencoded == Header::decode_value(encoded));
+}
+
+#[test]
+fn encode_slash() {
+  let unencoded = r"Hello\World";
+  let encoded = r"Hello\\World";
+  assert!(encoded == Header::encode_value(unencoded));
+}
+
+#[test]
+fn decode_slash() {
+  let unencoded = r"Hello\World";
+  let encoded = r"Hello\\World";
+  assert!(unencoded == Header::decode_value(encoded));
+}
