@@ -1,4 +1,3 @@
-Upstream changes to `rustc` have broken the `Timer`s underlying the heartbeat system. [Work is underway](https://github.com/zslayton/stomp-rs/issues/80) to migrate to `mio`. _Currently only compatible with rustc's nightly channel._
 stomp-rs [![](https://api.travis-ci.org/zslayton/stomp-rs.png?branch=master)](https://travis-ci.org/zslayton/stomp-rs) [![](http://meritbadge.herokuapp.com/stomp)](https://crates.io/crates/stomp)
 =====
 
