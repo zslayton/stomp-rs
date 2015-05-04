@@ -93,7 +93,7 @@ impl Header {
 
   fn decode_value(value: &str) -> String {
     let mut is_escaped = false;
-    let mut decoded = String::new();
+    let mut decoded = String::with_capacity(value.len());
     for grapheme in UnicodeSegmentation::graphemes(value, true) {
       if !is_escaped {
         match grapheme {

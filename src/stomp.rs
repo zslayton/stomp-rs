@@ -3,6 +3,7 @@
 
 #![feature(collections)]
 #![feature(slice_patterns)]
+#![feature(std_misc)]
 
 #[macro_use]
 extern crate log;

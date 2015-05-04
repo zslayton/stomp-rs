@@ -18,8 +18,8 @@ impl <'a, 'session, 'sub> SubscriptionBuilder <'a, 'session, 'sub> {
   #[allow(dead_code)] 
   pub fn start(mut self) -> Result<String> {
     let next_id = self.session.generate_subscription_id();
-    let subscription = Subscription::new(next_id, self.destination, self.ack_mode, self.handler);
-    let mut subscribe_frame = Frame::subscribe(subscription.id.as_ref(), self.destination, self.ack_mode);
+    let subscription = Subscription::new(next_id, self.destination, self.ack_mode, self.headers.clone(), self.handler);
+    let mut subscribe_frame = Frame::subscribe(&subscription.id, self.destination, self.ack_mode);
 
     subscribe_frame.headers.concat(&mut self.headers);
    

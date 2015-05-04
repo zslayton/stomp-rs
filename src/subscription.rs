@@ -1,5 +1,6 @@
 use frame::Frame;
 use subscription::AckOrNack::{Ack, Nack};
+use header::HeaderList;
 use std::sync::mpsc::Sender;
 
 #[derive(Copy,Clone)]
@@ -33,15 +34,17 @@ pub struct Subscription <'a> {
   pub id : String,
   pub destination: String,
   pub ack_mode: AckMode,
+  pub headers: HeaderList,
   pub handler: Box<MessageHandler + 'a>
 }
 
 impl <'a> Subscription <'a> {
-  pub fn new(id: u32, destination: &str, ack_mode: AckMode, message_handler: Box<MessageHandler + 'a>) -> Subscription <'a> {
+  pub fn new(id: u32, destination: &str, ack_mode: AckMode, headers: HeaderList, message_handler: Box<MessageHandler + 'a>) -> Subscription <'a> {
     Subscription {
       id: format!("stomp-rs/{}",id),
       destination: destination.to_string(),
       ack_mode: ack_mode,
+      headers: headers,
       handler: message_handler
     }
   }
@@ -57,6 +60,11 @@ impl <'a, T: 'a> ToMessageHandler <'a> for T where T: MessageHandler {
   }
 } 
 
+impl <'a> ToMessageHandler <'a> for Box<MessageHandler + 'a> {
+  fn to_message_handler(self) -> Box<MessageHandler + 'a> {
+    self 
+  }
+} 
 // Support for Sender<T> in subscriptions
 
 struct SenderMessageHandler {
@@ -85,6 +93,6 @@ impl <'a> ToMessageHandler<'a> for Sender<Frame> {
 impl <F> MessageHandler for F where F : FnMut(&Frame) -> AckOrNack {
   fn on_message(&mut self, frame: &Frame) -> AckOrNack {
     debug!("Passing frame to closure...");
-    self(frame)    
+    self(frame)
   }
 }

@@ -1,7 +1,6 @@
 //use std::old_io::net::tcp::TcpStream;
 use std::net::TcpStream;
-use std::io::BufReader;
-use std::io::BufWriter;
+use std::io::BufStream;
 use frame::Transmission;
 use std::io::Result;
 use std::io::Error;
@@ -18,6 +17,7 @@ pub struct Connection {
 
 #[derive(Clone, Copy)]
 pub struct HeartBeat(pub u32, pub u32);
+#[derive(Clone, Copy)]
 pub struct Credentials<'a>(pub &'a str, pub &'a str); 
   
 impl Connection {
@@ -48,19 +48,18 @@ impl Connection {
   }
 
   pub fn start_session_with_frame(&mut self, connect_frame: Frame) -> Result<(u32, u32)> {
-    let mut buffered_writer = BufWriter::new(self.tcp_stream.try_clone().unwrap());
-    try!(connect_frame.write(&mut buffered_writer));
+    let mut buffered_stream = BufStream::new(self.tcp_stream.try_clone().unwrap());
+    try!(connect_frame.write(&mut buffered_stream));
     let connected_frame : Frame;
-    let mut buffered_reader = BufReader::new(self.tcp_stream.try_clone().unwrap());
     loop{
-      let transmission = try!(Frame::read(&mut buffered_reader));
+      let transmission = try!(Frame::read(&mut buffered_stream));
       match transmission {
         Transmission::HeartBeat => continue,
         Transmission::CompleteFrame(frame) => {
           connected_frame = frame;
           break;
         },
-        Transmission::ConnectionClosed => return Err(Error::new(ErrorKind::ConnectionAborted, "Connection closed by remote host."))
+        Transmission::ConnectionClosed => return Err(Error::new(ErrorKind::ConnectionAborted, "Connection closed by remote host while waiting for CONNECTED frame."))
       } 
     }
     match connected_frame.command.as_ref() {

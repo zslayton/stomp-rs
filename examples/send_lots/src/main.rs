@@ -6,9 +6,10 @@ use stomp::header::{ContentType};
 use stomp::subscription::AckOrNack::Ack;
 use stomp::frame::Frame;
 use std::thread;
+use std::process;
 
-const TOTAL_MESSAGES : u64 = 10_000;
-const INTERVAL : u64 = 100;
+const TOTAL_MESSAGES : u64 = 1_000_000;
+const INTERVAL : u64 = 1000;
 
 fn main() {
   env_logger::init().unwrap();
@@ -29,6 +30,7 @@ fn main() {
     }
     if messages_received >= TOTAL_MESSAGES {
       println!("Receive complete.");
+      process::exit(0);
     }
     Ack
   }).start();

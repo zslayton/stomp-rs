@@ -67,6 +67,11 @@ impl FrameBuffer {
   pub fn len(&self) -> usize {
     self.buffer.len()
   }
+  
+  pub fn reset(&mut self) {
+    self.buffer.clear();
+    self.reset_parse_state();
+  }
 
   pub fn append(&mut self, bytes: &[u8]) {
     for byte in bytes {
