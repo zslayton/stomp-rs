@@ -174,7 +174,6 @@ impl FrameBuffer {
     vec 
   }
  
-  // Wasteful with allocations 
   fn read_into_string(&mut self, n: usize) -> String {
     let vec = self.read_into_vec(n); 
     let s = from_utf8(&vec)

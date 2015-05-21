@@ -138,7 +138,7 @@ impl Frame {
       if line.len() == 0 { // Empty line, no more headers
         break;
       }
-      let header = Header::decode_string(line.as_ref());
+      let header = Header::decode(line.as_ref());
       match header {
         Some(h) => header_list.push(h),
         None => return Err(Error::new(InvalidInput, "Invalid header encountered."))

@@ -8,7 +8,7 @@ use stomp::frame::Frame;
 use std::thread;
 use std::process;
 
-const TOTAL_MESSAGES : u64 = 10_000;
+const TOTAL_MESSAGES : u64 = 100_000;
 const INTERVAL : u64 = 1000;
 
 fn main() {

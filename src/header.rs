@@ -74,6 +74,33 @@ impl HeaderCodec {
     }
   }
 
+  pub fn encode_key_value(&mut self, key: &str, value: &str) -> Header {
+    //let raw_string = format!("{}:{}", key, Header::encode_value(value));
+    let mut raw_string = self.encode_value(key);
+    let encoded_value = self.encode_value(value);
+    raw_string.push_str(":");
+    raw_string.push_str(&encoded_value);
+    self.strings.put(encoded_value);
+    Header {
+      buffer: raw_string,
+      delimiter_index: key.len() as u32
+    }
+  }
+
+  fn encode_value(&mut self, value: &str) -> String {
+    let mut encoded = self.strings.get();
+    for grapheme in UnicodeSegmentation::graphemes(value, true) {
+      match grapheme {
+        "\\" => encoded.push_str(r"\\"),// Order is significant
+        "\r" => encoded.push_str(r"\r"),
+        "\n" => encoded.push_str(r"\n"),
+        ":" => encoded.push_str(r"\c"),
+        g => encoded.push_str(g)
+      }
+    }
+    encoded
+  }
+
   pub fn decode(&mut self, raw_string: &str) -> Option<Header> {
     let string = self.strings.string_from(raw_string);
     self.decode_string(string)
@@ -134,85 +161,29 @@ impl HeaderCodec {
 
 impl Header {
   pub fn new(key: &str, value: &str) -> Header {
-    Header::encode_key_value(key, value)
+    HeaderCodec::new().encode_key_value(key, value)
   }
 
-  fn from_string(raw_string: &str) -> Option<Header> {
-    let delimiter_index = match raw_string.find(':') {
-      Some(index) => index,
-      None => return None
-    };
-    let mut header = Header{
-      buffer: raw_string.to_string(),
-      delimiter_index: delimiter_index as u32
-    };
-    header = Header::decode_key_value(header.get_key(), header.get_value());
-    Some(header)
-  }
-
-  pub fn encode_string(raw_string: &str) -> Option<Header> {
-    let header = Header::from_string(raw_string);
-    header.map(|h| Header::encode_key_value(h.get_key(), h.get_value()))
-  }
-  
-  pub fn decode_string(raw_string: &str) -> Option<Header> {
-    let header = Header::from_string(raw_string);
-    header.map(|h| Header::decode_key_value(h.get_key(), h.get_value()))
+  pub fn decode(raw_string: &str) -> Option<Header> {
+    HeaderCodec::new().decode(raw_string)
   }
 
   pub fn encode_key_value(key: &str, value: &str) -> Header {
-    let raw_string = format!("{}:{}", key, Header::encode_value(value));
-    Header {
-      buffer: raw_string,
-      delimiter_index: key.len() as u32
-    }
+    HeaderCodec::new().encode_key_value(key, value)
   }
 
   pub fn decode_key_value(key: &str, value: &str) -> Header {
-    let raw_string = format!("{}:{}", key, Header::decode_value(value));
-    Header {
-      buffer: raw_string,
-      delimiter_index: key.len() as u32
-    }
+    HeaderCodec::new().decode_key_value(key, value)
   }
 
+  #[allow(dead_code)]
   fn decode_value(value: &str) -> String {
-    let mut is_escaped = false;
-    let mut decoded = String::with_capacity(value.len());
-    for grapheme in UnicodeSegmentation::graphemes(value, true) {
-      if !is_escaped {
-        match grapheme {
-          r"\" => is_escaped = true,
-          g => decoded.push_str(g)
-        }
-        continue;
-      }
-    
-      match grapheme {
-        r"c" => decoded.push_str(":"),
-        r"r" => decoded.push_str("\r"),
-        r"n" => decoded.push_str("\n"),
-        r"\" => decoded.push_str("\\"),
-        g => panic!("Unrecognized escape sequence encountered: '\\{}'.", g)
-      }
-      
-      is_escaped = false;
-    }
-    decoded
+    HeaderCodec::new().decode_value(value)
   }
 
+  #[allow(dead_code)]
   fn encode_value(value: &str) -> String {
-    let mut encoded = String::new();
-    for grapheme in UnicodeSegmentation::graphemes(value, true) {
-      match grapheme {
-        "\\" => encoded.push_str(r"\\"),// Order is significant
-        "\r" => encoded.push_str(r"\r"),
-        "\n" => encoded.push_str(r"\n"),
-        ":" => encoded.push_str(r"\c"),
-        g => encoded.push_str(g)
-      }
-    }
-    encoded
+    HeaderCodec::new().encode_value(value)
   }
 
   pub fn get_raw<'a>(&'a self) -> &'a str {
