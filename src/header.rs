@@ -3,6 +3,7 @@
 #![allow(non_camel_case_types)]
 use collections::slice::Iter;
 use unicode_segmentation::UnicodeSegmentation;
+use string_pool::StringPool;
 
 // Ideally this would be a simple typedef. However:
 // See Rust bug #11047: https://github.com/mozilla/rust/issues/11047
@@ -30,6 +31,12 @@ impl HeaderList {
     self.headers.iter()
   }
 
+  pub fn drain<F>(&mut self, mut sink: F) where F : FnMut(Header) {
+    for header in self.headers.drain(..) {
+      sink(header);
+    }
+  }
+
   pub fn concat(&mut self, other_list: &mut HeaderList) {
     self.headers.append(&mut other_list.headers);
   }
@@ -45,6 +52,84 @@ pub struct ContentType<'a>(pub &'a str);
 pub struct Header {
   buffer : String,
   delimiter_index : u32
+}
+
+pub struct HeaderCodec {
+  strings : StringPool
+}
+
+impl HeaderCodec {
+  pub fn new() -> HeaderCodec {
+    HeaderCodec::with_pool_size(0)
+  }
+
+  pub fn recycle(&mut self, header: Header) {
+    debug!("Recycling Header: {}", header.buffer);
+    self.strings.put(header.buffer);
+  }
+
+  pub fn with_pool_size(size: u32) -> HeaderCodec {
+    HeaderCodec {
+      strings: StringPool::with_size("HeaderCodec", size)
+    }
+  }
+
+  pub fn decode(&mut self, raw_string: &str) -> Option<Header> {
+    let string = self.strings.string_from(raw_string);
+    self.decode_string(string)
+  }
+
+  pub fn decode_string(&mut self, raw_string: String) -> Option<Header> {
+    let delimiter_index = match raw_string.find(':') {
+      Some(index) => index,
+      None => return None
+    };
+    let tmp_header = Header{
+      buffer: raw_string, 
+      delimiter_index: delimiter_index as u32
+    };
+    let header = self.decode_key_value(tmp_header.get_key(), tmp_header.get_value());
+    self.recycle(tmp_header);
+    Some(header)
+  }
+
+  pub fn decode_key_value(&mut self, key: &str, value: &str) -> Header {
+    //  let raw_string = format!("{}:{}", key, Header::decode_value(value));
+    let mut raw_string = self.decode_value(key);
+    let decoded_value = self.decode_value(value);
+    raw_string.push_str(":");
+    raw_string.push_str(&decoded_value);
+    self.strings.put(decoded_value);
+    Header {
+      buffer: raw_string,
+      delimiter_index: key.len() as u32
+    }
+  }
+
+  fn decode_value(&mut self, value: &str) -> String {
+    let mut is_escaped = false;
+    let mut decoded = self.strings.get(); 
+    for grapheme in UnicodeSegmentation::graphemes(value, true) {
+      if !is_escaped {
+        match grapheme {
+          r"\" => is_escaped = true,
+          g => decoded.push_str(g)
+        }
+        continue;
+      }
+    
+      match grapheme {
+        r"c" => decoded.push_str(":"),
+        r"r" => decoded.push_str("\r"),
+        r"n" => decoded.push_str("\n"),
+        r"\" => decoded.push_str("\\"),
+        g => panic!("Unrecognized escape sequence encountered: '\\{}'.", g)
+      }
+      
+      is_escaped = false;
+    }
+    decoded
+  }
 }
 
 impl Header {

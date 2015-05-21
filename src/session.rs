@@ -1,6 +1,7 @@
 use std::collections::hash_map::HashMap;
 use std::mem;
 use std::thread;
+use std::ops::DerefMut;
 use std::io::Read;
 use std::io::Write;
 use std::io::Result;
@@ -66,7 +67,7 @@ const GRACE_PERIOD_MULTIPLIER: f64 = 2.0;
 pub struct Session <'a> {
   session_builder: SessionBuilder<'a>,
   pub connection : Connection,
-  read_buffer: [u8; READ_BUFFER_SIZE],
+  read_buffer: Box<[u8; READ_BUFFER_SIZE]>,
   frame_buffer: FrameBuffer,
   next_transaction_id: u32,
   next_subscription_id: u32,
@@ -98,10 +99,9 @@ impl <'a> Handler for Session<'a> {
   }
 
   fn readable(&mut self, event_loop: &mut EventLoop<Session<'a>>, _token: Token, _: ReadHint) {
-    debug!("Readable!");
-    debug!("Buffer size: {}", &mut self.read_buffer.len());
+    debug!("Readable! Buffer size: {}", &mut self.read_buffer.len());
     debug!("Frame buffer length: {}", &mut self.frame_buffer.len());
-    let bytes_read = match self.connection.tcp_stream.read(&mut self.read_buffer){
+    let bytes_read = match self.connection.tcp_stream.read(self.read_buffer.deref_mut()){
       Ok(0) => {
         info!("Read 0 bytes. Connection closed by remote host.");
         self.reconnect(event_loop);
@@ -114,17 +114,18 @@ impl <'a> Handler for Session<'a> {
         return;
       },
     };
-    debug!("Read {} bytes", bytes_read);
+    info!("Read {} bytes", bytes_read);
     self.frame_buffer.append(&self.read_buffer[..bytes_read]);
     let mut num_frames = 0u32;
     loop {
       debug!("Reading from frame buffer");
       match self.frame_buffer.read_transmission() {
         Some(HeartBeat) => self.on_heartbeat(event_loop),
-        Some(CompleteFrame(frame)) => {
+        Some(CompleteFrame(mut frame)) => {
           debug!("Received frame!:\n{}", frame);
           self.reset_rx_heartbeat_timeout(event_loop);
-          self.dispatch(frame);
+          self.dispatch(&mut frame);
+          self.frame_buffer.recycle_frame(frame);
           num_frames += 1;
         },
         Some(ConnectionClosed) => {
@@ -149,7 +150,7 @@ impl <'a> Session <'a> {
       connection: connection,
       frame_buffer: FrameBuffer::new(),
       //TODO: Make this configurable
-      read_buffer: [0; READ_BUFFER_SIZE],
+      read_buffer: Box::new([0; READ_BUFFER_SIZE]),
       next_transaction_id: 0,
       next_subscription_id: 0,
       next_receipt_id: 0,
@@ -259,7 +260,7 @@ impl <'a> Session <'a> {
     self.error_callback = handler;
   }
 
-  fn handle_receipt(&mut self, frame: Frame) {
+  fn handle_receipt(&mut self, frame: &mut Frame) {
     match frame.headers.get_receipt_id() {
       Some(ReceiptId(ref receipt_id)) => {
         let mut handler = match self.receipt_handlers.remove(*receipt_id) {
@@ -340,7 +341,7 @@ impl <'a> Session <'a> {
     }
   }
 
-  pub fn dispatch(&mut self, frame: Frame) {
+  pub fn dispatch(&mut self, frame: &mut Frame) {
     // Check for ERROR frame
     match frame.command.as_ref() {
        "ERROR" => return self.error_callback.on_frame(&frame),

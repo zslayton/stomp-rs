@@ -2,13 +2,13 @@
 #![allow(unused_variables)]
 extern crate env_logger;
 extern crate stomp;
-use stomp::header::{ContentType};
+use stomp::header::{ContentType, Header};
 use stomp::subscription::AckOrNack::Ack;
 use stomp::frame::Frame;
 use std::thread;
 use std::process;
 
-const TOTAL_MESSAGES : u64 = 1_000_000;
+const TOTAL_MESSAGES : u64 = 10_000;
 const INTERVAL : u64 = 1000;
 
 fn main() {
@@ -33,7 +33,9 @@ fn main() {
       process::exit(0);
     }
     Ack
-  }).start();
+  })
+  .with(Header::new("activemq.prefetchSize", "1000"))
+  .start();
 
   let join_guard = thread::scoped(move || {
     let mut messages_sent: u64 = 0;

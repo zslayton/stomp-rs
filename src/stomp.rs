@@ -4,6 +4,8 @@
 #![feature(collections)]
 #![feature(slice_patterns)]
 #![feature(std_misc)]
+#![feature(buf_stream)]
+#![feature(collections_drain)]
 
 #[macro_use]
 extern crate log;
@@ -28,3 +30,5 @@ pub mod message_builder;
 pub mod session_builder;
 pub mod subscription_builder;
 pub mod option_setter;
+
+mod string_pool;
