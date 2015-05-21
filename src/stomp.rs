@@ -1,15 +1,9 @@
 #![crate_name = "stomp"]
 #![crate_type = "lib"]
 
-#![feature(collections)]
-#![feature(slice_patterns)]
-#![feature(std_misc)]
-#![feature(buf_stream)]
-#![feature(collections_drain)]
 
 #[macro_use]
 extern crate log;
-extern crate collections;
 extern crate mio;
 extern crate unicode_segmentation;
 

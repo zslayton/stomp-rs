@@ -1,7 +1,7 @@
 // Non-camel case types are used for Stomp Protocol version enum variants
 #![macro_use]
 #![allow(non_camel_case_types)]
-use collections::slice::Iter;
+use std::slice::Iter;
 use unicode_segmentation::UnicodeSegmentation;
 use string_pool::StringPool;
 
@@ -27,18 +27,25 @@ impl HeaderList {
     self.headers.push(header);
   }
 
+  pub fn pop(&mut self) -> Option<Header> {
+    self.headers.pop()
+  }
+
   pub fn iter<'a>(&'a self) -> Iter<'a, Header> {
     self.headers.iter()
   }
 
   pub fn drain<F>(&mut self, mut sink: F) where F : FnMut(Header) {
-    for header in self.headers.drain(..) {
+    while let Some(header) = self.headers.pop() {
       sink(header);
     }
   }
 
   pub fn concat(&mut self, other_list: &mut HeaderList) {
-    self.headers.append(&mut other_list.headers);
+    other_list.headers.reverse();
+    while let Some(header) = other_list.pop() {
+      self.headers.push(header);
+    }
   }
 
   pub fn retain<F>(&mut self, test: F) where F : Fn(&Header)->bool {
@@ -298,10 +305,11 @@ impl StompHeaderSet for HeaderList {
       None => return None
     };
     let spec_list: Vec<u32> = spec.split(',').filter_map(|str_val| str_val.parse::<u32>().ok()).collect();
-    match spec_list.as_ref() {
-      [x, y] => Some(HeartBeat(x, y)),
-      _ => None
+
+    if spec_list.len() != 2 {
+      return None;
     }
+    Some(HeartBeat(spec_list[0], spec_list[1]))
   }
 
   fn get_host<'a>(&'a self) -> Option<Host<'a>> {

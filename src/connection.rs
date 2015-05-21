@@ -1,6 +1,7 @@
 //use std::old_io::net::tcp::TcpStream;
 use std::net::TcpStream;
-use std::io::BufStream;
+use std::io::BufReader;
+use std::io::BufWriter;
 use frame::Transmission;
 use std::io::Result;
 use std::io::Error;
@@ -48,11 +49,12 @@ impl Connection {
   }
 
   pub fn start_session_with_frame(&mut self, connect_frame: Frame) -> Result<(u32, u32)> {
-    let mut buffered_stream = BufStream::new(self.tcp_stream.try_clone().unwrap());
-    try!(connect_frame.write(&mut buffered_stream));
+    let mut buffered_writer = BufWriter::new(self.tcp_stream.try_clone().unwrap());
+    try!(connect_frame.write(&mut buffered_writer));
     let connected_frame : Frame;
+    let mut buffered_reader = BufReader::new(self.tcp_stream.try_clone().unwrap());
     loop{
-      let transmission = try!(Frame::read(&mut buffered_stream));
+      let transmission = try!(Frame::read(&mut buffered_reader));
       match transmission {
         Transmission::HeartBeat => continue,
         Transmission::CompleteFrame(frame) => {

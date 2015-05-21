@@ -1,4 +1,3 @@
-#![feature(scoped)]
 #![allow(unused_variables)]
 extern crate env_logger;
 extern crate stomp;
@@ -8,7 +7,7 @@ use stomp::frame::Frame;
 use std::thread;
 use std::process;
 
-const TOTAL_MESSAGES : u64 = 100_000;
+const TOTAL_MESSAGES : u64 = 10_000;
 const INTERVAL : u64 = 1000;
 
 fn main() {
@@ -37,7 +36,7 @@ fn main() {
   .with(Header::new("activemq.prefetchSize", "1000"))
   .start();
 
-  let join_guard = thread::scoped(move || {
+  let join_guard = thread::spawn(move || {
     let mut messages_sent: u64 = 0;
     let mut publish_session = match stomp::session("127.0.0.1", 61613)
       .start() {
@@ -62,6 +61,6 @@ fn main() {
   });
 
   let _ = subscribe_session.listen(); // Loops infinitely, awaiting messages
-
+  join_guard.join().unwrap();;
   let _ = subscribe_session.disconnect();
 }

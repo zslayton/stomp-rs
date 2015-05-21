@@ -172,10 +172,7 @@ impl <'a> Session <'a> {
       match self.session_builder.clone().start() {
         Ok(session) => {
           info!("Reconnected successfully!");
-          let mut subscriptions = HashMap::new();
-          for (id, subscription) in self.subscriptions.drain() {
-            subscriptions.insert(id, subscription);
-          }
+          let subscriptions = mem::replace(&mut self.subscriptions, HashMap::new());
           mem::replace(self, session);
           self.subscriptions = subscriptions;
           event_loop.register(&self.connection.tcp_stream, Token(0)).ok().expect("Couldn't register re-established connection with the event loop.");
