@@ -1,4 +1,4 @@
-stomp-rs v0.9.0 [![](https://api.travis-ci.org/zslayton/stomp-rs.png?branch=master)](https://travis-ci.org/zslayton/stomp-rs) [![](http://meritbadge.herokuapp.com/stomp)](https://crates.io/crates/stomp)
+stomp-rs [![](https://api.travis-ci.org/zslayton/stomp-rs.png?branch=master)](https://travis-ci.org/zslayton/stomp-rs) [![](http://meritbadge.herokuapp.com/stomp)](https://crates.io/crates/stomp)
 =====
 
 `stomp-rs` provides a full [STOMP](http://stomp.github.io/stomp-specification-1.2.html) 1.2 client implementation for the [Rust programming language](http://www.rust-lang.org/). This allows programs written in Rust to interact with message queueing services like [ActiveMQ](http://activemq.apache.org/), [RabbitMQ](http://www.rabbitmq.com/), [HornetQ](http://hornetq.jboss.org/) and [OpenMQ](https://mq.java.net/).
