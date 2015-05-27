@@ -3,7 +3,7 @@
 #![allow(non_camel_case_types)]
 use std::slice::Iter;
 use unicode_segmentation::UnicodeSegmentation;
-use string_pool::StringPool;
+use lifeguard::Pool;
 
 // Ideally this would be a simple typedef. However:
 // See Rust bug #11047: https://github.com/mozilla/rust/issues/11047
@@ -62,7 +62,7 @@ pub struct Header {
 }
 
 pub struct HeaderCodec {
-  strings : StringPool
+  strings : Pool<String>
 }
 
 impl HeaderCodec {
@@ -72,12 +72,12 @@ impl HeaderCodec {
 
   pub fn recycle(&mut self, header: Header) {
     debug!("Recycling Header: {}", header.buffer);
-    self.strings.put(header.buffer);
+    self.strings.attach(header.buffer);
   }
 
   pub fn with_pool_size(size: u32) -> HeaderCodec {
     HeaderCodec {
-      strings: StringPool::with_size("HeaderCodec", size)
+      strings: Pool::with_size(size)
     }
   }
 
@@ -87,7 +87,7 @@ impl HeaderCodec {
     let encoded_value = self.encode_value(value);
     raw_string.push_str(":");
     raw_string.push_str(&encoded_value);
-    self.strings.put(encoded_value);
+    self.strings.attach(encoded_value);
     Header {
       buffer: raw_string,
       delimiter_index: key.len() as u32
@@ -95,7 +95,7 @@ impl HeaderCodec {
   }
 
   fn encode_value(&mut self, value: &str) -> String {
-    let mut encoded = self.strings.get();
+    let mut encoded = self.strings.detached();
     for grapheme in UnicodeSegmentation::graphemes(value, true) {
       match grapheme {
         "\\" => encoded.push_str(r"\\"),// Order is significant
@@ -109,7 +109,7 @@ impl HeaderCodec {
   }
 
   pub fn decode(&mut self, raw_string: &str) -> Option<Header> {
-    let string = self.strings.string_from(raw_string);
+    let string = self.strings.new_from(raw_string).detach();
     self.decode_string(string)
   }
 
@@ -133,7 +133,7 @@ impl HeaderCodec {
     let decoded_value = self.decode_value(value);
     raw_string.push_str(":");
     raw_string.push_str(&decoded_value);
-    self.strings.put(decoded_value);
+    self.strings.attach(decoded_value);
     Header {
       buffer: raw_string,
       delimiter_index: key.len() as u32
@@ -142,7 +142,7 @@ impl HeaderCodec {
 
   fn decode_value(&mut self, value: &str) -> String {
     let mut is_escaped = false;
-    let mut decoded = self.strings.get(); 
+    let mut decoded = self.strings.detached(); 
     for grapheme in UnicodeSegmentation::graphemes(value, true) {
       if !is_escaped {
         match grapheme {

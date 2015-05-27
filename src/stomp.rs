@@ -5,6 +5,7 @@
 #[macro_use]
 extern crate log;
 extern crate mio;
+extern crate lifeguard;
 extern crate unicode_segmentation;
 
 use session_builder::SessionBuilder;
@@ -24,5 +25,3 @@ pub mod message_builder;
 pub mod session_builder;
 pub mod subscription_builder;
 pub mod option_setter;
-
-mod string_pool;

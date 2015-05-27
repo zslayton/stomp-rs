@@ -6,7 +6,7 @@ use header::HeaderCodec;
 use std::str::from_utf8;
 use std::mem;
 use frame::{Frame, Transmission};
-use string_pool::StringPool;
+use lifeguard::Pool;
 use std::collections::VecDeque;
 
 const DEFAULT_STRING_POOL_SIZE: u32 = 4u32;
@@ -15,7 +15,7 @@ const DEFAULT_HEADER_CODEC_STRING_POOL_SIZE: u32 = 16u32;
 pub struct FrameBuffer {
   buffer: VecDeque<u8>, 
   parse_state: ParseState,
-  string_pool: StringPool,
+  string_pool: Pool<String>,
   header_codec: HeaderCodec
 }
 
@@ -67,7 +67,7 @@ impl FrameBuffer {
     FrameBuffer {
       buffer: VecDeque::with_capacity(capacity),
       parse_state: ParseState::new(),
-      string_pool: StringPool::with_size("FrameBuffer", DEFAULT_STRING_POOL_SIZE),
+      string_pool: Pool::with_size(DEFAULT_STRING_POOL_SIZE),
       header_codec: HeaderCodec::with_pool_size(DEFAULT_HEADER_CODEC_STRING_POOL_SIZE)
     }
   }
@@ -156,7 +156,7 @@ impl FrameBuffer {
   pub fn recycle_frame(&mut self, mut frame: Frame) {
     debug!("Recycling frame.");
     let command: String = frame.command;
-    self.string_pool.put(command);
+    self.string_pool.attach(command);
     frame.headers.drain(|header| self.header_codec.recycle(header));
   }
 
@@ -179,7 +179,7 @@ impl FrameBuffer {
     let s = from_utf8(&vec)
       .ok()
       .expect("Attempted to read a string that was not utf8.");
-    self.string_pool.string_from(s)
+    self.string_pool.new_from(s).detach()
   }
 
   fn chomp(mut line: String) -> String {
@@ -205,7 +205,7 @@ impl FrameBuffer {
         debug!("Chomped length: {}", command.len());
         if command == "" {
           debug!("Found HeartBeat");
-          self.string_pool.put(command);
+          self.string_pool.attach(command);
           return HeartBeat;
         }
         if command.len() == 1 {
@@ -227,7 +227,7 @@ impl FrameBuffer {
         let header_string = FrameBuffer::chomp(header_string); 
         debug!("Header -> '{}'", header_string);
         if header_string == "" {
-          self.string_pool.put(header_string);
+          self.string_pool.attach(header_string);
           return ReadHeaderResult::EndOfHeaders;
         }
         let header = self.header_codec.decode(&header_string).expect("Invalid header encountered.");
@@ -236,7 +236,7 @@ impl FrameBuffer {
         // created by read_into_string; we must recycle it.
         // The Header created now uses a String from the HeaderCodec
         // StringPool
-        self.string_pool.put(header_string);
+        self.string_pool.attach(header_string);
         ReadHeaderResult::Header(header)
       },
       None => ReadHeaderResult::Incomplete
