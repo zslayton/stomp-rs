@@ -61,6 +61,6 @@ fn main() {
   });
 
   let _ = subscribe_session.listen(); // Loops infinitely, awaiting messages
-  join_guard.join().unwrap();;
+  join_guard.join().unwrap();
   let _ = subscribe_session.disconnect();
 }

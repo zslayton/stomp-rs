@@ -231,11 +231,6 @@ impl FrameBuffer {
           return ReadHeaderResult::EndOfHeaders;
         }
         let header = self.header_codec.decode(&header_string).expect("Invalid header encountered.");
-        // Because header parsing uses its own string pool,
-        // we cannot allow the header to simply take the String
-        // created by read_into_string; we must recycle it.
-        // The Header created now uses a String from the HeaderCodec
-        // StringPool
         self.string_pool.attach(header_string);
         ReadHeaderResult::Header(header)
       },
