@@ -1,13 +1,11 @@
 #![crate_name = "stomp"]
 #![crate_type = "lib"]
 
-#![feature(collections)]
-#![feature(slice_patterns)]
 
 #[macro_use]
 extern crate log;
-extern crate collections;
 extern crate mio;
+extern crate lifeguard;
 extern crate unicode_segmentation;
 
 use session_builder::SessionBuilder;

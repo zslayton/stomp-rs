@@ -1,7 +1,7 @@
 [package]
 
 name = "stomp"
-version = "0.9.0"
+version = "0.10.0"
 authors = [ "zslayton <zack.slayton@gmail.com" ]
 repository = "https://github.com/zslayton/stomp-rs"
 readme = "README.md"
@@ -13,6 +13,7 @@ license = "MIT"
 name = "stomp"
 
 [dependencies]
+"lifeguard" = "*"
 "unicode-segmentation" = "*"
 "log" = "*"
 "mio" = "*"

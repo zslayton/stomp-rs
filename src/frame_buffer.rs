@@ -2,19 +2,26 @@ use header::HeaderList;
 use header::Header;
 use header::ContentLength;
 use header::StompHeaderSet;
+use header::HeaderCodec;
 use std::str::from_utf8;
+use std::mem;
 use frame::{Frame, Transmission};
+use lifeguard::Pool;
 use std::collections::VecDeque;
+
+const DEFAULT_STRING_POOL_SIZE: u32 = 4u32;
+const DEFAULT_HEADER_CODEC_STRING_POOL_SIZE: u32 = 16u32;
 
 pub struct FrameBuffer {
   buffer: VecDeque<u8>, 
-  parse_state: ParseState
+  parse_state: ParseState,
+  string_pool: Pool<String>,
+  header_codec: HeaderCodec
 }
 
 struct ParseState {
   command: Option<String>,
   headers: HeaderList,
-  body: Option<Vec<u8>>,
   section: FrameSection,
 }
 
@@ -23,7 +30,6 @@ impl ParseState {
     ParseState {
       command: None,
       headers: header_list![],
-      body: None,
       section: FrameSection::Command
     }
   }
@@ -60,12 +66,19 @@ impl FrameBuffer {
   pub fn with_capacity(capacity: usize) -> FrameBuffer {
     FrameBuffer {
       buffer: VecDeque::with_capacity(capacity),
-      parse_state: ParseState::new()
+      parse_state: ParseState::new(),
+      string_pool: Pool::with_size(DEFAULT_STRING_POOL_SIZE),
+      header_codec: HeaderCodec::with_pool_size(DEFAULT_HEADER_CODEC_STRING_POOL_SIZE)
     }
   }
 
   pub fn len(&self) -> usize {
     self.buffer.len()
+  }
+  
+  pub fn reset(&mut self) {
+    self.buffer.clear();
+    self.reset_parse_state();
   }
 
   pub fn append(&mut self, bytes: &[u8]) {
@@ -98,16 +111,17 @@ impl FrameBuffer {
 
   fn resume_parsing_at_headers(&mut self) -> Option<Transmission> {
     debug!("Parsing headers.");
-    match self.read_header() {
-      ReadHeaderResult::Header(header) => {
-        self.parse_state.headers.push(header);
-        self.resume_parsing_at_headers()
-      },
-      ReadHeaderResult::EndOfHeaders => {
-        self.parse_state.section = FrameSection::Body;
-        self.resume_parsing_at_body()
-      },
-      ReadHeaderResult::Incomplete => None
+    loop {
+      match self.read_header() {
+        ReadHeaderResult::Header(header) => {
+          self.parse_state.headers.push(header);
+        },
+        ReadHeaderResult::EndOfHeaders => {
+          self.parse_state.section = FrameSection::Body;
+          return self.resume_parsing_at_body();
+        },
+        ReadHeaderResult::Incomplete => return None
+      }
     }
   }
 
@@ -116,11 +130,12 @@ impl FrameBuffer {
     debug!("Parsing body.");
     match self.read_body() {
       ReadBodyResult::Body(body_bytes) => {
-        let command = match self.parse_state.command {
-          Some(ref command) => command.to_string(),
+        let command = match self.parse_state.command.take() {
+          Some(command) => command,
           None => panic!("No COMMAND found.")
         };
-        let headers = self.parse_state.headers.clone();
+        // Consider making the HeaderList an Option<HeaderList> to allow recycling
+        let headers = mem::replace(&mut self.parse_state.headers, header_list![]);
         let body = body_bytes;
         let frame = Frame {
           command: command,
@@ -135,10 +150,14 @@ impl FrameBuffer {
   }
 
   fn reset_parse_state(&mut self) {
-    self.parse_state.command = None;
-    self.parse_state.headers = header_list![];
-    self.parse_state.body = None;
     self.parse_state.section = FrameSection::Command;
+  }
+
+  pub fn recycle_frame(&mut self, mut frame: Frame) {
+    debug!("Recycling frame.");
+    let command: String = frame.command;
+    self.string_pool.attach(command);
+    frame.headers.drain(|header| self.header_codec.recycle(header));
   }
 
   // Replace these methods with bridge-buffer concept
@@ -155,13 +174,12 @@ impl FrameBuffer {
     vec 
   }
  
-  // Wasteful with allocations 
   fn read_into_string(&mut self, n: usize) -> String {
     let vec = self.read_into_vec(n); 
-    let string = from_utf8(&vec)
+    let s = from_utf8(&vec)
       .ok()
       .expect("Attempted to read a string that was not utf8.");
-    return string.to_string();
+    self.string_pool.new_from(s).detach()
   }
 
   fn chomp(mut line: String) -> String {
@@ -187,6 +205,7 @@ impl FrameBuffer {
         debug!("Chomped length: {}", command.len());
         if command == "" {
           debug!("Found HeartBeat");
+          self.string_pool.attach(command);
           return HeartBeat;
         }
         if command.len() == 1 {
@@ -208,9 +227,11 @@ impl FrameBuffer {
         let header_string = FrameBuffer::chomp(header_string); 
         debug!("Header -> '{}'", header_string);
         if header_string == "" {
+          self.string_pool.attach(header_string);
           return ReadHeaderResult::EndOfHeaders;
         }
-        let header = Header::decode_string(&header_string).expect("Invalid header encountered.");
+        let header = self.header_codec.decode(&header_string).expect("Invalid header encountered.");
+        self.string_pool.attach(header_string);
         ReadHeaderResult::Header(header)
       },
       None => ReadHeaderResult::Incomplete

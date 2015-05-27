@@ -1,4 +1,7 @@
 use std::collections::hash_map::HashMap;
+use std::mem;
+use std::thread;
+use std::ops::DerefMut;
 use std::io::Read;
 use std::io::Write;
 use std::io::Result;
@@ -19,6 +22,7 @@ use header::HeaderList;
 use header::ReceiptId;
 use header::StompHeaderSet;
 use transaction::Transaction;
+use session_builder::SessionBuilder;
 use message_builder::MessageBuilder;
 use subscription_builder::SubscriptionBuilder;
 use frame_buffer::FrameBuffer;
@@ -60,9 +64,10 @@ impl<'a, T> ReceiptHandler<'a, T> where T: 'a + ToFrameHandler<'a> {
 const READ_BUFFER_SIZE: usize = 64 * 1024;
 const GRACE_PERIOD_MULTIPLIER: f64 = 2.0;
 
-pub struct Session <'a> { 
+pub struct Session <'a> {
+  session_builder: SessionBuilder<'a>,
   pub connection : Connection,
-  read_buffer: [u8; READ_BUFFER_SIZE],
+  read_buffer: Box<[u8; READ_BUFFER_SIZE]>,
   frame_buffer: FrameBuffer,
   next_transaction_id: u32,
   next_subscription_id: u32,
@@ -94,28 +99,39 @@ impl <'a> Handler for Session<'a> {
   }
 
   fn readable(&mut self, event_loop: &mut EventLoop<Session<'a>>, _token: Token, _: ReadHint) {
-    debug!("Readable!");
-    debug!("Buffer size: {}", &mut self.read_buffer.len());
+    debug!("Readable! Buffer size: {}", &mut self.read_buffer.len());
     debug!("Frame buffer length: {}", &mut self.frame_buffer.len());
-    let bytes_read = match self.connection.tcp_stream.read(&mut self.read_buffer){
-      Ok(0) => panic!("Read 0 bytes. Connection closed by remote host."),
+    let bytes_read = match self.connection.tcp_stream.read(self.read_buffer.deref_mut()){
+      Ok(0) => {
+        info!("Read 0 bytes. Connection closed by remote host.");
+        self.reconnect(event_loop);
+        return;
+      },
       Ok(bytes_read) => bytes_read,
-      Err(error) => panic!("Error while reading: {}", error)
+      Err(error) => {
+        info!("Error while reading: {}", error);
+        self.reconnect(event_loop);
+        return;
+      },
     };
-    debug!("Read {} bytes", bytes_read);
+    info!("Read {} bytes", bytes_read);
     self.frame_buffer.append(&self.read_buffer[..bytes_read]);
     let mut num_frames = 0u32;
     loop {
       debug!("Reading from frame buffer");
       match self.frame_buffer.read_transmission() {
         Some(HeartBeat) => self.on_heartbeat(event_loop),
-        Some(CompleteFrame(frame)) => {
+        Some(CompleteFrame(mut frame)) => {
           debug!("Received frame!:\n{}", frame);
           self.reset_rx_heartbeat_timeout(event_loop);
-          self.dispatch(frame);
+          self.dispatch(&mut frame);
+          self.frame_buffer.recycle_frame(frame);
           num_frames += 1;
         },
-        Some(ConnectionClosed) => panic!("Connection closed by remote host."),
+        Some(ConnectionClosed) => {
+          info!("Connection closed by remote host.");
+          self.reconnect(event_loop);
+        },
         None => {
           debug!("Done. Read {} frames.", num_frames);
           break;
@@ -126,14 +142,15 @@ impl <'a> Handler for Session<'a> {
 }
 
 impl <'a> Session <'a> {
-  pub fn new(connection: Connection, tx_heartbeat_ms: u32, rx_heartbeat_ms: u32) -> Session<'a> {
+  pub fn new(session_builder: SessionBuilder<'a>, connection: Connection, tx_heartbeat_ms: u32, rx_heartbeat_ms: u32) -> Session<'a> {
     let modified_rx_heartbeat_ms : u32 = ((rx_heartbeat_ms as f64) * GRACE_PERIOD_MULTIPLIER) as u32;
 
     Session {
+      session_builder: session_builder,
       connection: connection,
       frame_buffer: FrameBuffer::new(),
       //TODO: Make this configurable
-      read_buffer: [0; READ_BUFFER_SIZE],
+      read_buffer: Box::new([0; READ_BUFFER_SIZE]),
       next_transaction_id: 0,
       next_subscription_id: 0,
       next_receipt_id: 0,
@@ -143,6 +160,45 @@ impl <'a> Session <'a> {
       subscriptions: HashMap::new(),
       receipt_handlers: HashMap::new(),
       error_callback: Box::new(Session::default_error_callback) as Box<FrameHandler>
+    }
+  }
+
+  fn reconnect(&mut self, event_loop: &mut EventLoop<Session<'a>>) {
+    let delay_between_attempts = 3_000u32; //TODO: Make this configurable
+    event_loop.deregister(&self.connection.tcp_stream).ok().expect("Failed to deregister dead tcp connection.");
+    self.clear_rx_heartbeat_timeout(event_loop);
+    self.frame_buffer.reset();
+    loop {
+      match self.session_builder.clone().start() {
+        Ok(session) => {
+          info!("Reconnected successfully!");
+          let subscriptions = mem::replace(&mut self.subscriptions, HashMap::new());
+          mem::replace(self, session);
+          self.subscriptions = subscriptions;
+          event_loop.register(&self.connection.tcp_stream, Token(0)).ok().expect("Couldn't register re-established connection with the event loop.");
+          self.register_rx_heartbeat_timeout(event_loop);
+          self.reset_rx_heartbeat_timeout(event_loop);
+          info!("Resubscribing to {} destinations", self.subscriptions.len());
+          let frames : Vec<Frame> = self.subscriptions
+            .values()
+            .map(|subscription| {
+              info!("Re-subscribing to '{}'", &subscription.destination);
+              let mut subscribe_frame = Frame::subscribe(&subscription.id, &subscription.destination, subscription.ack_mode);
+              subscribe_frame.headers.concat(&mut subscription.headers.clone());
+              subscribe_frame.headers.retain(|header| (*header).get_key() != "receipt"); //TODO: Find a way to clean this up.
+              subscribe_frame
+            }).collect();
+          for subscribe_frame in frames {
+            self.send(subscribe_frame).ok().expect("Couldn't re-subscribe.");
+          }
+          break;
+        },
+        Err(error) => {
+          info!("Failed to reconnect: {:?}, retrying again in {}ms", error, delay_between_attempts);
+        }
+      };
+      debug!("Waiting {}ms before attempting to connect again.", delay_between_attempts);
+      thread::sleep_ms(delay_between_attempts);
     }
   }
 
@@ -180,11 +236,16 @@ impl <'a> Session <'a> {
 
   fn reset_rx_heartbeat_timeout(&mut self, event_loop: &mut EventLoop<Session<'a>>) {
     debug!("Resetting heartbeat rx timeout");
+    self.clear_rx_heartbeat_timeout(event_loop);
+    self.register_rx_heartbeat_timeout(event_loop);
+  }
+
+  fn clear_rx_heartbeat_timeout(&mut self, event_loop: &mut EventLoop<Session<'a>>) {
+    debug!("Clearing existing heartbeat rx timeout");
     self.rx_heartbeat_timeout.map(|timeout| {
       let result = event_loop.clear_timeout(timeout);
       debug!("Reset complete -> {}", result);
     });
-    self.register_rx_heartbeat_timeout(event_loop);
   }
 
   fn default_error_callback(frame : &Frame) {
@@ -196,7 +257,7 @@ impl <'a> Session <'a> {
     self.error_callback = handler;
   }
 
-  fn handle_receipt(&mut self, frame: Frame) {
+  fn handle_receipt(&mut self, frame: &mut Frame) {
     match frame.headers.get_receipt_id() {
       Some(ReceiptId(ref receipt_id)) => {
         let mut handler = match self.receipt_handlers.remove(*receipt_id) {
@@ -204,9 +265,7 @@ impl <'a> Session <'a> {
             debug!("Calling handler for ReceiptId '{}'.", *receipt_id);
             handler
           },
-          None => {
-            panic!("Received unexpected RECEIPT '{}'", *receipt_id)
-          }
+          None => panic!("Received unexpected RECEIPT '{}'", *receipt_id)
         };
         handler.on_frame(&frame);
       },
@@ -251,7 +310,7 @@ impl <'a> Session <'a> {
       destination: destination,
       ack_mode: AckMode::Auto,
       handler: message_handler,
-      headers: HeaderList::new()
+      headers: HeaderList::new(),
     }
   }
 
@@ -279,7 +338,7 @@ impl <'a> Session <'a> {
     }
   }
 
-  pub fn dispatch(&mut self, frame: Frame) {
+  pub fn dispatch(&mut self, frame: &mut Frame) {
     // Check for ERROR frame
     match frame.command.as_ref() {
        "ERROR" => return self.error_callback.on_frame(&frame),

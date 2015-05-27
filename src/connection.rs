@@ -18,6 +18,7 @@ pub struct Connection {
 
 #[derive(Clone, Copy)]
 pub struct HeartBeat(pub u32, pub u32);
+#[derive(Clone, Copy)]
 pub struct Credentials<'a>(pub &'a str, pub &'a str); 
   
 impl Connection {
@@ -60,7 +61,7 @@ impl Connection {
           connected_frame = frame;
           break;
         },
-        Transmission::ConnectionClosed => return Err(Error::new(ErrorKind::ConnectionAborted, "Connection closed by remote host."))
+        Transmission::ConnectionClosed => return Err(Error::new(ErrorKind::ConnectionAborted, "Connection closed by remote host while waiting for CONNECTED frame."))
       } 
     }
     match connected_frame.command.as_ref() {

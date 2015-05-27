@@ -1,8 +1,9 @@
 // Non-camel case types are used for Stomp Protocol version enum variants
 #![macro_use]
 #![allow(non_camel_case_types)]
-use collections::slice::Iter;
+use std::slice::Iter;
 use unicode_segmentation::UnicodeSegmentation;
+use lifeguard::Pool;
 
 // Ideally this would be a simple typedef. However:
 // See Rust bug #11047: https://github.com/mozilla/rust/issues/11047
@@ -26,12 +27,25 @@ impl HeaderList {
     self.headers.push(header);
   }
 
+  pub fn pop(&mut self) -> Option<Header> {
+    self.headers.pop()
+  }
+
   pub fn iter<'a>(&'a self) -> Iter<'a, Header> {
     self.headers.iter()
   }
 
+  pub fn drain<F>(&mut self, mut sink: F) where F : FnMut(Header) {
+    while let Some(header) = self.headers.pop() {
+      sink(header);
+    }
+  }
+
   pub fn concat(&mut self, other_list: &mut HeaderList) {
-    self.headers.append(&mut other_list.headers);
+    other_list.headers.reverse();
+    while let Some(header) = other_list.pop() {
+      self.headers.push(header);
+    }
   }
 
   pub fn retain<F>(&mut self, test: F) where F : Fn(&Header)->bool {
@@ -47,53 +61,88 @@ pub struct Header {
   delimiter_index : u32
 }
 
-impl Header {
-  pub fn new(key: &str, value: &str) -> Header {
-    Header::encode_key_value(key, value)
+pub struct HeaderCodec {
+  strings : Pool<String>
+}
+
+impl HeaderCodec {
+  pub fn new() -> HeaderCodec {
+    HeaderCodec::with_pool_size(0)
   }
 
-  fn from_string(raw_string: &str) -> Option<Header> {
+  pub fn recycle(&mut self, header: Header) {
+    debug!("Recycling Header: {}", header.buffer);
+    self.strings.attach(header.buffer);
+  }
+
+  pub fn with_pool_size(size: u32) -> HeaderCodec {
+    HeaderCodec {
+      strings: Pool::with_size(size)
+    }
+  }
+
+  pub fn encode_key_value(&mut self, key: &str, value: &str) -> Header {
+    //let raw_string = format!("{}:{}", key, Header::encode_value(value));
+    let mut raw_string = self.encode_value(key);
+    let encoded_value = self.encode_value(value);
+    raw_string.push_str(":");
+    raw_string.push_str(&encoded_value);
+    self.strings.attach(encoded_value);
+    Header {
+      buffer: raw_string,
+      delimiter_index: key.len() as u32
+    }
+  }
+
+  fn encode_value(&mut self, value: &str) -> String {
+    let mut encoded = self.strings.detached();
+    for grapheme in UnicodeSegmentation::graphemes(value, true) {
+      match grapheme {
+        "\\" => encoded.push_str(r"\\"),// Order is significant
+        "\r" => encoded.push_str(r"\r"),
+        "\n" => encoded.push_str(r"\n"),
+        ":" => encoded.push_str(r"\c"),
+        g => encoded.push_str(g)
+      }
+    }
+    encoded
+  }
+
+  pub fn decode(&mut self, raw_string: &str) -> Option<Header> {
+    let string = self.strings.new_from(raw_string).detach();
+    self.decode_string(string)
+  }
+
+  pub fn decode_string(&mut self, raw_string: String) -> Option<Header> {
     let delimiter_index = match raw_string.find(':') {
       Some(index) => index,
       None => return None
     };
-    let mut header = Header{
-      buffer: raw_string.to_string(),
+    let tmp_header = Header{
+      buffer: raw_string, 
       delimiter_index: delimiter_index as u32
     };
-    header = Header::decode_key_value(header.get_key(), header.get_value());
+    let header = self.decode_key_value(tmp_header.get_key(), tmp_header.get_value());
+    self.recycle(tmp_header);
     Some(header)
   }
 
-  pub fn encode_string(raw_string: &str) -> Option<Header> {
-    let header = Header::from_string(raw_string);
-    header.map(|h| Header::encode_key_value(h.get_key(), h.get_value()))
-  }
-  
-  pub fn decode_string(raw_string: &str) -> Option<Header> {
-    let header = Header::from_string(raw_string);
-    header.map(|h| Header::decode_key_value(h.get_key(), h.get_value()))
-  }
-
-  pub fn encode_key_value(key: &str, value: &str) -> Header {
-    let raw_string = format!("{}:{}", key, Header::encode_value(value));
+  pub fn decode_key_value(&mut self, key: &str, value: &str) -> Header {
+    //  let raw_string = format!("{}:{}", key, Header::decode_value(value));
+    let mut raw_string = self.decode_value(key);
+    let decoded_value = self.decode_value(value);
+    raw_string.push_str(":");
+    raw_string.push_str(&decoded_value);
+    self.strings.attach(decoded_value);
     Header {
       buffer: raw_string,
       delimiter_index: key.len() as u32
     }
   }
 
-  pub fn decode_key_value(key: &str, value: &str) -> Header {
-    let raw_string = format!("{}:{}", key, Header::decode_value(value));
-    Header {
-      buffer: raw_string,
-      delimiter_index: key.len() as u32
-    }
-  }
-
-  fn decode_value(value: &str) -> String {
+  fn decode_value(&mut self, value: &str) -> String {
     let mut is_escaped = false;
-    let mut decoded = String::new();
+    let mut decoded = self.strings.detached(); 
     for grapheme in UnicodeSegmentation::graphemes(value, true) {
       if !is_escaped {
         match grapheme {
@@ -115,19 +164,33 @@ impl Header {
     }
     decoded
   }
+}
 
+impl Header {
+  pub fn new(key: &str, value: &str) -> Header {
+    HeaderCodec::new().encode_key_value(key, value)
+  }
+
+  pub fn decode(raw_string: &str) -> Option<Header> {
+    HeaderCodec::new().decode(raw_string)
+  }
+
+  pub fn encode_key_value(key: &str, value: &str) -> Header {
+    HeaderCodec::new().encode_key_value(key, value)
+  }
+
+  pub fn decode_key_value(key: &str, value: &str) -> Header {
+    HeaderCodec::new().decode_key_value(key, value)
+  }
+
+  #[allow(dead_code)]
+  fn decode_value(value: &str) -> String {
+    HeaderCodec::new().decode_value(value)
+  }
+
+  #[allow(dead_code)]
   fn encode_value(value: &str) -> String {
-    let mut encoded = String::new();
-    for grapheme in UnicodeSegmentation::graphemes(value, true) {
-      match grapheme {
-        "\\" => encoded.push_str(r"\\"),// Order is significant
-        "\r" => encoded.push_str(r"\r"),
-        "\n" => encoded.push_str(r"\n"),
-        ":" => encoded.push_str(r"\c"),
-        g => encoded.push_str(g)
-      }
-    }
-    encoded
+    HeaderCodec::new().encode_value(value)
   }
 
   pub fn get_raw<'a>(&'a self) -> &'a str {
@@ -242,10 +305,11 @@ impl StompHeaderSet for HeaderList {
       None => return None
     };
     let spec_list: Vec<u32> = spec.split(',').filter_map(|str_val| str_val.parse::<u32>().ok()).collect();
-    match spec_list.as_ref() {
-      [x, y] => Some(HeartBeat(x, y)),
-      _ => None
+
+    if spec_list.len() != 2 {
+      return None;
     }
+    Some(HeartBeat(spec_list[0], spec_list[1]))
   }
 
   fn get_host<'a>(&'a self) -> Option<Host<'a>> {

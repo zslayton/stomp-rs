@@ -5,6 +5,7 @@ use std::io::Result;
 use connection::{Connection, HeartBeat, Credentials};
 use header::{HeaderList, Header};
 
+#[derive(Clone)]
 pub struct SessionBuilder<'a> {
   pub host: &'a str,
   pub port: u16,
@@ -47,7 +48,7 @@ impl <'a> SessionBuilder <'a> {
 
     let connect_frame = Frame {
       command : "CONNECT".to_string(),
-      headers : self.headers,
+      headers : self.headers.clone(), // Cloned to allow this SessionBuilder to be re-used
       body : Vec::new()
     };
 
@@ -60,7 +61,7 @@ impl <'a> SessionBuilder <'a> {
       server_rx_ms
     );
 
-    Ok(Session::new(connection, tx_ms, rx_ms))
+    Ok(Session::new(self, connection, tx_ms, rx_ms))
   }
 
   #[allow(dead_code)] 

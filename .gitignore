@@ -3,4 +3,5 @@ target/**
 examples/**/target/**
 **.swp
 **callgrind.out.*
+**perf.data*
 Cargo.lock
