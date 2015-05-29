@@ -75,7 +75,7 @@ impl HeaderCodec {
     self.strings.attach(header.buffer);
   }
 
-  pub fn with_pool_size(size: u32) -> HeaderCodec {
+  pub fn with_pool_size(size: usize) -> HeaderCodec {
     HeaderCodec {
       strings: Pool::with_size(size)
     }

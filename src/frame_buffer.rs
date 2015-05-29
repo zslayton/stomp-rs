@@ -9,8 +9,8 @@ use frame::{Frame, Transmission};
 use lifeguard::Pool;
 use std::collections::VecDeque;
 
-const DEFAULT_STRING_POOL_SIZE: u32 = 4u32;
-const DEFAULT_HEADER_CODEC_STRING_POOL_SIZE: u32 = 16u32;
+const DEFAULT_STRING_POOL_SIZE: usize = 4;
+const DEFAULT_HEADER_CODEC_STRING_POOL_SIZE: usize = 16;
 
 pub struct FrameBuffer {
   buffer: VecDeque<u8>, 
