@@ -27,7 +27,7 @@ use message_builder::MessageBuilder;
 use subscription_builder::SubscriptionBuilder;
 use frame_buffer::FrameBuffer;
 
-use mio::{EventLoop, Handler, Token, ReadHint, Timeout};
+use mio::{EventLoop, Handler, Token, EventSet, Timeout};
 
 pub trait FrameHandler {
   fn on_frame(&mut self, &Frame);
@@ -98,7 +98,7 @@ impl <'a> Handler for Session<'a> {
     }
   }
 
-  fn readable(&mut self, event_loop: &mut EventLoop<Session<'a>>, _token: Token, _: ReadHint) {
+  fn ready(&mut self, event_loop: &mut EventLoop<Session<'a>>, _token: Token, _: EventSet) {
     debug!("Readable! Buffer size: {}", &mut self.read_buffer.len());
     debug!("Frame buffer length: {}", &mut self.frame_buffer.len());
     let bytes_read = match self.connection.tcp_stream.read(self.read_buffer.deref_mut()){
