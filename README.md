@@ -18,32 +18,41 @@ The APIs for `stomp-rs` are not yet stable and are likely to fluctuate before v1
 ### Connect / Subscribe / Send
 ```rust
 extern crate stomp;
+
 use stomp::frame::Frame;
+use stomp::header::{Header, SuppressedHeader};
+use stomp::connection::{HeartBeat, Credentials};
 use stomp::subscription::AckOrNack::Ack;
 
 fn main() {
-  
+
   let destination = "/topic/messages";
   let mut message_count: u64 = 0;
 
-  let mut session = match stomp::session("127.0.0.1", 61613).start() {
+
+  let mut session = match stomp::session("127.0.0.1", 61613)
+    .with(Credentials("guest", "guest"))
+    .with(SuppressedHeader("host"))
+    .with(Header::new("host", "/"))
+    .start() {
       Ok(session) => session,
       Err(error)  => panic!("Could not connect to the server: {}", error)
    };
-  
+
   session.subscription(destination, |frame: &Frame| {
     message_count += 1;
-    println!("Received message #{}:\n{}", message_count, frame);
+    println!("Received message {}", frame);
     Ack
-  }).start();
-  
-  session.message(destination, "Animal").send();
-  session.message(destination, "Vegetable").send();
-  session.message(destination, "Mineral").send();
-  
-  session.listen(); // Loops infinitely, awaiting messages
+  }).start().ok().expect("unable to receive message");
 
-  session.disconnect();
+  let send_error = "unable to send message";
+  session.message(destination, "Animal").send().ok().expect(send_error);
+  session.message(destination, "Vegetable").send().ok().expect(send_error);
+  session.message(destination, "Mineral").send().ok().expect(send_error);
+
+  session.listen().ok().expect("unable to listen"); // Loops infinitely, awaiting messages
+
+  session.disconnect().ok().expect("cannot disconnect from server");
 }
 ```
 
