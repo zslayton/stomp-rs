@@ -1,5 +1,5 @@
 //use std::old_io::net::tcp::TcpStream;
-use mio::tcp::{TcpStream};
+use std::net::TcpStream;
 use std::io::BufReader;
 use std::io::BufWriter;
 use frame::Transmission;
@@ -24,8 +24,7 @@ pub struct Credentials<'a>(pub &'a str, pub &'a str);
 impl Connection {
 
   pub fn new(ip_address: &str, port: u16) -> Result<Connection> {
-    let addr = (ip_address.to_string() + ":" + &port.to_string()).parse().unwrap();
-    let tcp_stream = try!(TcpStream::connect(&addr));
+    let tcp_stream = try!(TcpStream::connect((ip_address, port)));
     Ok(Connection {
       ip_address: ip_address.to_string(),
       port: port,
