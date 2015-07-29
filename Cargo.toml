@@ -13,7 +13,7 @@ license = "MIT"
 name = "stomp"
 
 [dependencies]
-"lifeguard" = "*"
-"unicode-segmentation" = "*"
-"log" = "*"
-"mio" = "*"
+"lifeguard" = "0.2"
+"unicode-segmentation" = "0.1"
+"log" = "0.3"
+"mio" = "0.3"
