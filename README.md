@@ -109,13 +109,29 @@ session.message(destination, "text/plain", "Hypoteneuse".as_bytes())
   .with(ReceiptHandler::new(|frame: &Frame| println!("Got a receipt for 'Hypoteneuse'.")))
   .send();
 ```
-### Handling ERROR frames
+### Handling frames
+To handle errors, you can register an error handler
 ```rust
 session.on_error(|frame: &Frame| {
   panic!("ERROR frame received:\n{}", frame);
 });
 ```
-
+To change the frame that will be sent, use the before send handler 
+```rust
+session.on_before_send(|frame: &mut Frame| {
+  match frame.command.as_ref() {
+    "NACK" => {
+      frame.headers.push(Header::new("requeue", "false"));
+    },
+    _ => {}
+  }
+});
+```
+And to change the frame that is received, use the before receive handler
+```rust
+session.on_before_receive(|frame: &mut Frame| {
+});
+```
 ### Cargo.toml
 ```toml
 [package]
