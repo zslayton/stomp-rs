@@ -109,27 +109,33 @@ session.message(destination, "text/plain", "Hypoteneuse".as_bytes())
   .with(ReceiptHandler::new(|frame: &Frame| println!("Got a receipt for 'Hypoteneuse'.")))
   .send();
 ```
-### Handling frames
+### Handling ERROR frames
 To handle errors, you can register an error handler
 ```rust
 session.on_error(|frame: &Frame| {
   panic!("ERROR frame received:\n{}", frame);
 });
 ```
-To change the frame that will be sent, use the before send handler 
+
+### Manipulating inbound and outbound frames
+In some cases, brokers impose rules or restrictions which may make it necessary
+directly modify frames in ways that are not conveniently exposed by the API. In such 
+cases, you can use the `on_before_send` and `on_before_receive` methods to specify a
+callback to perform this custom logic prior to the sending or receipt of each frame.
+
+For example:
 ```rust
+// Require that all NACKs include a header specifying an optional requeue policy
 session.on_before_send(|frame: &mut Frame| {
-  match frame.command.as_ref() {
-    "NACK" => {
-      frame.headers.push(Header::new("requeue", "false"));
-    },
-    _ => {}
+  if frame.command == "NACK" {
+    frame.headers.push(Header::new("requeue", "false"));
   }
 });
-```
-And to change the frame that is received, use the before receive handler
-```rust
+
 session.on_before_receive(|frame: &mut Frame| {
+  if frame.command == "MESSAGE" {
+    // Modify the frame
+  }
 });
 ```
 ### Cargo.toml
