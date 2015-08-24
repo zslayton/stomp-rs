@@ -10,7 +10,9 @@ use lifeguard::Pool;
 use std::collections::VecDeque;
 
 const DEFAULT_STRING_POOL_SIZE: usize = 4;
+const DEFAULT_STRING_POOL_MAX_SIZE: usize = 32;
 const DEFAULT_HEADER_CODEC_STRING_POOL_SIZE: usize = 16;
+const DEFAULT_HEADER_CODEC_STRING_POOL_MAX_SIZE: usize = 64;
 
 pub struct FrameBuffer {
   buffer: VecDeque<u8>, 
@@ -67,8 +69,9 @@ impl FrameBuffer {
     FrameBuffer {
       buffer: VecDeque::with_capacity(capacity),
       parse_state: ParseState::new(),
-      string_pool: Pool::with_size(DEFAULT_STRING_POOL_SIZE),
-      header_codec: HeaderCodec::with_pool_size(DEFAULT_HEADER_CODEC_STRING_POOL_SIZE)
+      string_pool: Pool::with_size_and_max(DEFAULT_STRING_POOL_SIZE, DEFAULT_STRING_POOL_MAX_SIZE),
+      header_codec: HeaderCodec::with_pool_size_and_max(DEFAULT_HEADER_CODEC_STRING_POOL_SIZE, 
+                                                        DEFAULT_HEADER_CODEC_STRING_POOL_MAX_SIZE)
     }
   }
 

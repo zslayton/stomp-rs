@@ -277,10 +277,10 @@ impl <'a> Session <'a> {
     error!("ERROR received:\n{}", frame);
   }
 
-  fn default_frame_send_callback(frame : &mut Frame) {
+  fn default_frame_send_callback(_frame : &mut Frame) {
   }
 
-  fn default_frame_receive_callback(frame : &mut Frame) {
+  fn default_frame_receive_callback(_frame : &mut Frame) {
   }
 
   pub fn on_error<T: 'a>(&mut self, handler_convertible: T) where T : ToFrameHandler<'a> + 'a {

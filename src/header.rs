@@ -67,7 +67,8 @@ pub struct HeaderCodec {
 
 impl HeaderCodec {
   pub fn new() -> HeaderCodec {
-    HeaderCodec::with_pool_size(0)
+    use std::usize;
+    HeaderCodec::with_pool_size_and_max(0, usize::max_value())
   }
 
   pub fn recycle(&mut self, header: Header) {
@@ -75,9 +76,9 @@ impl HeaderCodec {
     self.strings.attach(header.buffer);
   }
 
-  pub fn with_pool_size(size: usize) -> HeaderCodec {
+  pub fn with_pool_size_and_max(size: usize, max_size: usize) -> HeaderCodec {
     HeaderCodec {
-      strings: Pool::with_size(size)
+      strings: Pool::with_size_and_max(size, max_size)
     }
   }
 
