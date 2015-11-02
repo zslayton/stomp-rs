@@ -198,7 +198,9 @@ impl <'a> Session <'a> {
         Ok(session) => {
           info!("Reconnected successfully!");
           let subscriptions = mem::replace(&mut self.subscriptions, HashMap::new());
+          let error_callback = mem::replace(&mut self.error_callback, Box::new(Session::default_error_callback) as Box<FrameHandler>);
           mem::replace(self, session);
+          self.error_callback = error_callback;
           self.subscriptions = subscriptions;
           event_loop.register(&self.connection.tcp_stream, Token(0)).ok().expect("Couldn't register re-established connection with the event loop.");
           self.register_rx_heartbeat_timeout(event_loop);
