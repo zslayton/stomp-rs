@@ -118,7 +118,7 @@ session.on_error(|frame: &Frame| {
 ```
 
 ### Manipulating inbound and outbound frames
-In some cases, brokers impose rules or restrictions which may make it necessary
+In some cases, brokers impose rules or restrictions which may make it necessary to
 directly modify frames in ways that are not conveniently exposed by the API. In such 
 cases, you can use the `on_before_send` and `on_before_receive` methods to specify a
 callback to perform this custom logic prior to the sending or receipt of each frame.
