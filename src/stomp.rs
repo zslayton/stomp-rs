@@ -5,6 +5,7 @@
 #[macro_use]
 extern crate log;
 extern crate mio;
+extern crate mai;
 extern crate lifeguard;
 extern crate unicode_segmentation;
 

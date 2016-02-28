@@ -15,7 +15,7 @@ const DEFAULT_HEADER_CODEC_STRING_POOL_SIZE: usize = 16;
 const DEFAULT_HEADER_CODEC_STRING_POOL_MAX_SIZE: usize = 64;
 
 pub struct FrameBuffer {
-  buffer: VecDeque<u8>, 
+  buffer: VecDeque<u8>,
   parse_state: ParseState,
   string_pool: Pool<String>,
   header_codec: HeaderCodec
@@ -64,13 +64,13 @@ impl FrameBuffer {
   pub fn new() -> FrameBuffer {
     FrameBuffer::with_capacity(1024 * 64)
   }
- 
+
   pub fn with_capacity(capacity: usize) -> FrameBuffer {
     FrameBuffer {
       buffer: VecDeque::with_capacity(capacity),
       parse_state: ParseState::new(),
       string_pool: Pool::with_size_and_max(DEFAULT_STRING_POOL_SIZE, DEFAULT_STRING_POOL_MAX_SIZE),
-      header_codec: HeaderCodec::with_pool_size_and_max(DEFAULT_HEADER_CODEC_STRING_POOL_SIZE, 
+      header_codec: HeaderCodec::with_pool_size_and_max(DEFAULT_HEADER_CODEC_STRING_POOL_SIZE,
                                                         DEFAULT_HEADER_CODEC_STRING_POOL_MAX_SIZE)
     }
   }
@@ -78,7 +78,7 @@ impl FrameBuffer {
   pub fn len(&self) -> usize {
     self.buffer.len()
   }
-  
+
   pub fn reset(&mut self) {
     self.buffer.clear();
     self.reset_parse_state();
@@ -93,7 +93,7 @@ impl FrameBuffer {
 
   pub fn read_transmission(&mut self) -> Option<Transmission> {
     match self.parse_state.section {
-      FrameSection::Command => self.resume_parsing_at_command(), 
+      FrameSection::Command => self.resume_parsing_at_command(),
       FrameSection::Headers => self.resume_parsing_at_headers(),
       FrameSection::Body    => self.resume_parsing_at_body()
     }
@@ -128,7 +128,6 @@ impl FrameBuffer {
     }
   }
 
-//TODO: Eliminate clone()s
   fn resume_parsing_at_body(&mut self) -> Option<Transmission> {
     debug!("Parsing body.");
     match self.read_body() {
@@ -174,11 +173,11 @@ impl FrameBuffer {
       vec.push(byte);
     }
     debug!("Removed {} bytes from frame buffer, new size: {}", n, self.buffer.len());
-    vec 
+    vec
   }
- 
+
   fn read_into_string(&mut self, n: usize) -> String {
-    let vec = self.read_into_vec(n); 
+    let vec = self.read_into_vec(n);
     let s = from_utf8(&vec)
       .ok()
       .expect("Attempted to read a string that was not utf8.");
@@ -227,7 +226,7 @@ impl FrameBuffer {
         debug!("Found header ending @ index {}", index);
         let num_bytes = index + 1;
         let header_string = self.read_into_string(num_bytes as usize);
-        let header_string = FrameBuffer::chomp(header_string); 
+        let header_string = FrameBuffer::chomp(header_string);
         debug!("Header -> '{}'", header_string);
         if header_string == "" {
           self.string_pool.attach(header_string);
@@ -240,7 +239,7 @@ impl FrameBuffer {
       None => ReadHeaderResult::Incomplete
     }
   }
-  
+
   fn read_body(&mut self) -> ReadBodyResult {
     let maybe_body : Option<Vec<u8>> = match self.parse_state.headers.get_content_length() {
       Some(ContentLength(num_bytes)) => self.read_body_by_content_length(num_bytes as usize),
@@ -274,7 +273,7 @@ impl FrameBuffer {
         let mut body = self.read_into_vec(num_bytes as usize);
         body.pop(); // Discard null octet
         debug!("Body -> '{}'", FrameBuffer::body_as_string(&body));
-        Some(body) 
+        Some(body)
       },
       None => None
     }

@@ -27,7 +27,7 @@ use message_builder::MessageBuilder;
 use subscription_builder::SubscriptionBuilder;
 use frame_buffer::FrameBuffer;
 
-use mio::{EventLoop, Handler, Token, ReadHint, Timeout};
+use mio::{EventLoop, Handler, Token, Timeout};
 
 pub trait FrameHandler {
   fn on_frame(&mut self, &Frame);
@@ -161,7 +161,7 @@ impl <'a> Handler for Session<'a> {
         }
       }
     }
-  } 
+  }
 }
 
 impl <'a> Session <'a> {
@@ -387,20 +387,20 @@ impl <'a> Session <'a> {
        "RECEIPT" => return self.handle_receipt(frame),
         _ => {} // No operation
     };
- 
+
     let ack_mode : AckMode;
-    let callback_result : AckOrNack; 
+    let callback_result : AckOrNack;
     { // This extra scope is required to free up `frame` and `self.subscriptions`
       // following a borrow.
 
       // Find the subscription ID on the frame that was received
-      let header::Subscription(sub_id) = 
+      let header::Subscription(sub_id) =
         frame.headers
         .get_subscription()
         .expect("Frame did not contain a subscription header.");
 
       // Look up the appropriate Subscription object
-      let subscription = 
+      let subscription =
          self.subscriptions
          .get_mut(sub_id)
          .expect("Received a message for an unknown subscription.");
@@ -418,7 +418,7 @@ impl <'a> Session <'a> {
         debug!("Auto ack, no frame sent.");
       }
       Client | ClientIndividual => {
-        let header::Ack(ack_id) = 
+        let header::Ack(ack_id) =
           frame.headers
           .get_ack()
           .expect("Message did not have an 'ack' header.");
@@ -428,7 +428,7 @@ impl <'a> Session <'a> {
         }.unwrap_or_else(|error|panic!(format!("Could not acknowledge frame: {}", error)));
       } // Client | ...
     }
-  } 
+  }
 
   fn acknowledge_frame(&mut self, ack_id: &str) -> Result<()> {
     let ack_frame = Frame::ack(ack_id);
