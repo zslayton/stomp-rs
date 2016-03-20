@@ -9,20 +9,24 @@ extern crate mai;
 extern crate lifeguard;
 extern crate unicode_segmentation;
 
-use session_builder::SessionBuilder;
+use session::Client; //TODO: Make new module for Client
 
-pub fn session<'a>(host: &'a str, port: u16) -> SessionBuilder<'a>{
-  SessionBuilder::new(host, port)
+pub fn client() -> Client {
+    Client::new()
 }
 
+pub mod handler;
 pub mod connection;
 pub mod header;
+pub mod codec;
 pub mod frame;
-pub mod frame_buffer;
 pub mod session;
+pub mod session_manager;
 pub mod subscription;
 pub mod transaction;
 pub mod message_builder;
+pub mod protocol;
 pub mod session_builder;
 pub mod subscription_builder;
+pub mod timeout;
 pub mod option_setter;

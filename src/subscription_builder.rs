@@ -5,35 +5,46 @@ use header::HeaderList;
 use option_setter::OptionSetter;
 use std::io::Result;
 
-pub struct SubscriptionBuilder <'a, 'session: 'a, 'sub: 'session> {
-  pub session: &'a mut Session<'session>,
-  pub destination: &'a str,
-  pub ack_mode: AckMode,
-  pub handler: Box<MessageHandler + 'sub>,
-  pub headers: HeaderList
+pub struct SubscriptionBuilder<'builder, 'session: 'builder, 'context: 'session> {
+    pub session: &'builder mut Session<'session, 'context>,
+    pub destination: String,
+    pub ack_mode: AckMode,
+    pub handler: Box<MessageHandler>,
+    pub headers: HeaderList,
 }
 
-impl <'a, 'session, 'sub> SubscriptionBuilder <'a, 'session, 'sub> {
+impl<'builder, 'session, 'context> SubscriptionBuilder<'builder, 'session, 'context> {
+    #[allow(dead_code)]
+    pub fn start(mut self) -> Result<String> {
+        let next_id = self.session.generate_subscription_id();
+        let subscription = Subscription::new(next_id,
+                                             &self.destination,
+                                             self.ack_mode,
+                                             self.headers.clone(),
+                                             self.handler);
+        let mut subscribe_frame = Frame::subscribe(&subscription.id,
+                                                   &self.destination,
+                                                   self.ack_mode);
 
-  #[allow(dead_code)] 
-  pub fn start(mut self) -> Result<String> {
-    let next_id = self.session.generate_subscription_id();
-    let subscription = Subscription::new(next_id, self.destination, self.ack_mode, self.headers.clone(), self.handler);
-    let mut subscribe_frame = Frame::subscribe(&subscription.id, self.destination, self.ack_mode);
+        subscribe_frame.headers.concat(&mut self.headers);
 
-    subscribe_frame.headers.concat(&mut self.headers);
-   
-    try!(self.session.send(subscribe_frame));
-    debug!("Registering callback for subscription id '{}' from builder", subscription.id);
-    let id_to_return = subscription.id.to_string();
-    self.session.subscriptions.insert(subscription.id.to_string(), subscription);
-    Ok(id_to_return)
-  }
+        try!(self.session.send(subscribe_frame));
+        debug!("Registering callback for subscription id '{}' from builder",
+               subscription.id);
+        let id_to_return = subscription.id.to_string();
+        self.session
+            .context
+            .session()
+            .state()
+            .subscriptions
+            .insert(subscription.id.to_string(), subscription);
+        Ok(id_to_return)
+    }
 
-  #[allow(dead_code)] 
-  pub fn with<T>(self, option_setter: T) -> SubscriptionBuilder<'a, 'session, 'sub> where T: OptionSetter<SubscriptionBuilder<'a, 'session, 'sub>> {
-    option_setter.set_option(self) 
-  } 
+    #[allow(dead_code)]
+    pub fn with<T>(self, option_setter: T) -> SubscriptionBuilder<'builder, 'session, 'context>
+        where T: OptionSetter<SubscriptionBuilder<'builder, 'session, 'context>>
+    {
+        option_setter.set_option(self)
+    }
 }
-
-
