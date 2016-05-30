@@ -5,22 +5,26 @@ use frame::{Frame, Transmission};
 use session::{self, Session, SessionEventHandler};
 use subscription::AckMode;
 use subscription::AckOrNack;
+use subscription::MessageHandler;
 use header::{self, Header, HeartBeat, StompHeaderSet};
 use handler;
 use connection::{self, Connection};
 use std::io;
+use std::marker::PhantomData;
 
-pub struct SessionManager;
+pub struct SessionManager<H> where H: handler::Handler {
+    phantom_data: PhantomData<H>
+}
 
 const GRACE_PERIOD_MULTIPLIER: f32 = 2.0;
 
-impl Handler<StompProtocol> for SessionManager {
-    fn on_ready(&mut self, context: &mut Context<StompProtocol>) {
+impl <H> Handler<StompProtocol<H>> for SessionManager<H> where H: handler::Handler {
+    fn on_ready(&mut self, context: &mut Context<StompProtocol<H>>) {
         let (mut session, _event_handler) = Session::from(context);
         self.on_stream_ready(&mut session);
     }
 
-    fn on_frame(&mut self, context: &mut Context<StompProtocol>, transmission: Transmission) {
+    fn on_frame(&mut self, context: &mut Context<StompProtocol<H>>, transmission: Transmission) {
         use frame::Transmission::*;
         let (mut session, mut event_handler) = Session::from(context);
         match transmission {
@@ -38,7 +42,7 @@ impl Handler<StompProtocol> for SessionManager {
         }
     }
 
-    fn on_timeout(&mut self, context: &mut Context<StompProtocol>, timeout: Timeout) {
+    fn on_timeout(&mut self, context: &mut Context<StompProtocol<H>>, timeout: Timeout) {
         let (mut session, mut event_handler) = Session::from(context);
         match timeout {
             Timeout::SendHeartBeat => {
@@ -52,13 +56,13 @@ impl Handler<StompProtocol> for SessionManager {
         }
     }
 
-    fn on_error(&mut self, context: &mut Context<StompProtocol>, error: &Error) {
+    fn on_error(&mut self, context: &mut Context<StompProtocol<H>>, error: &Error) {
         // This API needs to be fleshed out. Currently only ERROR frames are exposed
         // to the user of the stomp library; IO errors need to be surfaced too.
         panic!("ERROR: {:?}", error);
     }
 
-    fn on_closed(&mut self, context: &mut Context<StompProtocol>) {
+    fn on_closed(&mut self, context: &mut Context<StompProtocol<H>>) {
         let (mut session, mut event_handler) = Session::from(context);
         info!("Connection closed.");
         self.clear_rx_heartbeat_timeout(&mut session);
@@ -66,18 +70,24 @@ impl Handler<StompProtocol> for SessionManager {
     }
 }
 
-impl SessionManager {
+impl <H> SessionManager<H> where H: handler::Handler {
+    pub fn new() -> SessionManager<H> {
+        SessionManager {
+            phantom_data: PhantomData
+        }
+    }
 
-    pub fn dispatch(&mut self, session: &mut Session, event_handler: &mut SessionEventHandler, frame: &mut Frame) {
+    pub fn dispatch(&mut self, session: &mut Session<H>, event_handler: &mut H, frame: &mut Frame) {
         // Check for ERROR frame
         match frame.command.as_ref() {
             "ERROR" => return event_handler.on_error(session, &frame),
-            "RECEIPT" => return self.handle_receipt(session, event_handler, frame),
+            "RECEIPT" => return self.handle_receipt(session, event_handler, frame), // TODO: Store Frame and pass to on_receipt callback?
             "CONNECTED" => return self.on_connected_frame_received(session, event_handler, &frame),
             _ => debug!("Received a frame of type {}", &frame.command), // No operation
         };
 
         let ack_mode: AckMode;
+        let callback: MessageHandler<H>;
         let callback_result: AckOrNack;
         {
             // This extra scope is required to free up `frame` and `self.subscriptions`
@@ -90,16 +100,22 @@ impl SessionManager {
                                                              subscription header.");
 
 
-            // Take note of the ack_mode used by this Subscription
-            ack_mode = session
-                        .state()
-                        .subscriptions
-                        .get_mut(sub_id)
-                        .expect("Received a message for an unknown subscription.")
-                        .ack_mode;
+             {
+                 // Take note of the ack_mode used by this Subscription
+                 let subscription = session
+                             .state()
+                             .subscriptions
+                             .get_mut(sub_id)
+                             .expect("Received a message for an unknown subscription.");
+
+                 ack_mode = subscription.ack_mode;
+                 callback = subscription.handler;
+             }
+
 
             // Invoke the message callback, providing the frame
-            callback_result = event_handler.on_message(session, frame);
+            //callback_result = event_handler.on_message(session, frame);
+            callback_result = callback(event_handler, session, frame);
         }
 
         debug!("Executing.");
@@ -125,17 +141,17 @@ impl SessionManager {
         }
     }
 
-    fn acknowledge_frame(&mut self, session: &mut Session, ack_id: &str) -> io::Result<()> {
+    fn acknowledge_frame(&mut self, session: &mut Session<H>, ack_id: &str) -> io::Result<()> {
         let ack_frame = Frame::ack(ack_id);
         session.send(ack_frame)
     }
 
-    fn negatively_acknowledge_frame(&mut self, session: &mut Session, ack_id: &str) -> io::Result<()> {
+    fn negatively_acknowledge_frame(&mut self, session: &mut Session<H>, ack_id: &str) -> io::Result<()> {
         let nack_frame = Frame::nack(ack_id);
         session.send(nack_frame)
     }
 
-    pub fn on_stream_ready(&mut self, session: &mut Session) {
+    pub fn on_stream_ready(&mut self, session: &mut Session<H>) {
         // Add credentials to the header list if specified
         match session.config().credentials.clone() { // TODO: Refactor to avoid clone()
             Some(credentials) => {
@@ -166,7 +182,7 @@ impl SessionManager {
         let _ = session.send(connect_frame); //TODO: Propagate error
     }
 
-    pub fn on_connected_frame_received(&mut self, session: &mut Session, event_handler: &mut SessionEventHandler, connected_frame: &Frame) {
+    pub fn on_connected_frame_received(&mut self, session: &mut Session<H>, event_handler: &mut H, connected_frame: &Frame) {
         // The Client's requested tx/rx HeartBeat timeouts
         let connection::HeartBeat(client_tx_ms, client_rx_ms) = session.config().heartbeat;
 
@@ -193,7 +209,7 @@ impl SessionManager {
         // self.on_connected_callback.on_frame(new Session)
     }
 
-    fn handle_receipt(&mut self, session: &mut Session, event_handler: &mut SessionEventHandler, frame: &mut Frame) {
+    fn handle_receipt(&mut self, session: &mut Session<H>, event_handler: &mut H, frame: &mut Frame) {
         let header::ReceiptId(ref receipt_id) = frame
                                              .headers
                                              .get_receipt_id()
@@ -204,7 +220,7 @@ impl SessionManager {
         event_handler.on_receipt(session, frame);
     }
 
-    pub fn register_tx_heartbeat_timeout(&mut self, session: &mut Session) {
+    pub fn register_tx_heartbeat_timeout(&mut self, session: &mut Session<H>) {
         let tx_heartbeat_ms = session
                                 .state()
                                 .tx_heartbeat_ms
@@ -223,7 +239,7 @@ impl SessionManager {
         session.state().tx_heartbeat_timeout = Some(timeout);
     }
 
-    pub fn register_rx_heartbeat_timeout(&mut self, session: &mut Session) {
+    pub fn register_rx_heartbeat_timeout(&mut self, session: &mut Session<H>) {
         let rx_heartbeat_ms = session
                                 .state()
                                 .rx_heartbeat_ms
@@ -245,18 +261,18 @@ impl SessionManager {
         session.state().rx_heartbeat_timeout = Some(timeout);
     }
 
-    pub fn on_heartbeat(&mut self, session: &mut Session) {
+    pub fn on_heartbeat(&mut self, session: &mut Session<H>) {
         debug!("Received HeartBeat");
         self.reset_rx_heartbeat_timeout(session);
     }
 
-    pub fn reset_rx_heartbeat_timeout(&mut self, session: &mut Session) {
+    pub fn reset_rx_heartbeat_timeout(&mut self, session: &mut Session<H>) {
         debug!("Resetting heartbeat rx timeout");
         self.clear_rx_heartbeat_timeout(session);
         self.register_rx_heartbeat_timeout(session);
     }
 
-    pub fn clear_rx_heartbeat_timeout(&mut self, session: &mut Session) {
+    pub fn clear_rx_heartbeat_timeout(&mut self, session: &mut Session<H>) {
         debug!("Clearing existing heartbeat rx timeout");
         session.state().rx_heartbeat_timeout.map(|timeout| {
             let result = session.stream().clear_timeout(timeout);
@@ -264,7 +280,7 @@ impl SessionManager {
         });
     }
 
-    pub fn clear_tx_heartbeat_timeout(&mut self, session: &mut Session) {
+    pub fn clear_tx_heartbeat_timeout(&mut self, session: &mut Session<H>) {
         debug!("Clearing existing heartbeat rx timeout");
         session.state().tx_heartbeat_timeout.map(|timeout| {
             let result = session.stream().clear_timeout(timeout);
@@ -272,7 +288,7 @@ impl SessionManager {
         });
     }
 
-    pub fn send_heartbeat(&mut self, session: &mut Session) {
+    pub fn send_heartbeat(&mut self, session: &mut Session<H>) {
         debug!("Sending heartbeat");
         let _ = match session.stream().send(Transmission::HeartBeat) {
             Ok(_) => Ok(()),//FIXME: Replace 'Other' below with a more meaningful ErrorKind

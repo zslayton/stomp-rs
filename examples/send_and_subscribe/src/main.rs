@@ -1,7 +1,6 @@
 #[macro_use]
 extern crate env_logger;
 extern crate stomp;
-use std::process::exit;
 use stomp::frame::Frame;
 use stomp::header::{Header, SuppressedHeader};
 use stomp::subscription::AckOrNack::{self, Ack};
@@ -10,11 +9,8 @@ use stomp::connection::{HeartBeat, Credentials};
 use stomp::session::ReceiptHandler;
 use stomp::session::Session;
 
-const NUMBER_OF_MESSAGES: u64 = 100_000;
-
 struct ExampleSession {
     session_number: u32,
-    message_count: u64,
     destination: String
 }
 
@@ -22,18 +18,24 @@ impl ExampleSession {
     fn new(session_number: u32) -> ExampleSession {
         ExampleSession {
             session_number: session_number,
-            message_count: 0,
-            destination: format!("topics/messages_{}", session_number)
+            destination: format!("topics/modern_major_general_{}", session_number)
         }
     }
 }
 
+impl ExampleSession {
+    fn on_gilbert_and_sullivan_reference(&mut self, _session: &mut Session<Self>, frame: &Frame) -> AckOrNack {
+        println!("Another droll reference!: '{}'", std::str::from_utf8(&frame.body).expect("Non-utf8 bytes"));
+        Ack
+    }
+}
+
 impl stomp::handler::Handler for ExampleSession {
-    fn on_connected(&mut self, session: &mut Session, _frame: &Frame) {
+    fn on_connected(&mut self, session: &mut Session<Self>, _frame: &Frame) {
         println!("Example session established.");
         let destination = &self.destination;
         println!("Subscribing to '{}'.", destination);
-        let _ = session.subscription(destination)
+        let _ = session.subscription(destination, Self::on_gilbert_and_sullivan_reference)
                        .with(AckMode::Auto)
                        .with(Header::new("custom-subscription-header", "lozenge"))
                        .with(ReceiptHandler::new(|_: &Frame| println!("Subscribed successfully.")))
@@ -41,33 +43,18 @@ impl stomp::handler::Handler for ExampleSession {
 
         let _ = session.message(destination, "Animal").send();
         let _ = session.message(destination, "Vegetable").send();
-        for _ in 0..(NUMBER_OF_MESSAGES - 2) {
-            let _ = session.message(destination, "Mineral").send();
-        }
+        let _ = session.message(destination, "Mineral").send();
     }
 
-    fn on_receipt(&mut self, _session: &mut Session, receipt: &Frame) {
+    fn on_receipt(&mut self, _session: &mut Session<Self>, receipt: &Frame) {
         println!("Received a Receipt:\n{}", receipt);
     }
 
-    fn on_message(&mut self, _session: &mut Session, _frame: &Frame) -> AckOrNack {
-        self.message_count += 1;
-        if self.message_count == NUMBER_OF_MESSAGES {
-            println!("Got {} messages.", NUMBER_OF_MESSAGES);
-            exit(0);
-        }
-        // println!("Session #{} received message #{}:\n{}",
-        //          self.session_number,
-        //          self.message_count,
-        //          frame);
-        Ack
-    }
-
-    fn on_error(&mut self, _session: &mut Session, frame: &Frame) {
+    fn on_error(&mut self, _session: &mut Session<Self>, frame: &Frame) {
         println!("Something went horribly wrong: {}", frame);
     }
 
-    fn on_disconnected(&mut self, _session: &mut Session) {
+    fn on_disconnected(&mut self, _session: &mut Session<Self>) {
         println!("Session #{} disconnected.", self.session_number);
     }
 }

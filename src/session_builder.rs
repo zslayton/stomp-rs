@@ -10,6 +10,7 @@ use std::net::SocketAddr;
 use std::net::IpAddr;
 use mio::tcp::TcpStream;
 use std::str::FromStr;
+use handler::Handler;
 
 #[derive(Clone)]
 pub struct SessionConfig {
@@ -20,18 +21,18 @@ pub struct SessionConfig {
     pub headers: HeaderList,
 }
 
-pub struct SessionBuilder<'a> {
-    pub client: &'a mut Client,
+pub struct SessionBuilder<'a, H: 'a> where H: Handler {
+    pub client: &'a mut Client<H>,
     pub config: SessionConfig,
-    pub event_handler: SessionEventHandler,
+    pub event_handler: H,
 }
 
-impl<'a> SessionBuilder<'a> {
-    pub fn new(client: &'a mut Client,
+impl<'a, H: 'a> SessionBuilder<'a, H> where H: Handler {
+    pub fn new(client: &'a mut Client<H>,
                host: &str,
                port: u16,
-               event_handler: SessionEventHandler)
-               -> SessionBuilder<'a> {
+               event_handler: H)
+               -> SessionBuilder<'a, H> {
         let config = SessionConfig {
             host: host.to_owned(),
             port: port,
@@ -63,8 +64,8 @@ impl<'a> SessionBuilder<'a> {
     }
 
     #[allow(dead_code)]
-    pub fn with<'b, T>(self, option_setter: T) -> SessionBuilder<'a>
-        where T: OptionSetter<SessionBuilder<'a>>
+    pub fn with<'b, T>(self, option_setter: T) -> SessionBuilder<'a, H>
+        where T: OptionSetter<SessionBuilder<'a, H>>
     {
         option_setter.set_option(self)
     }

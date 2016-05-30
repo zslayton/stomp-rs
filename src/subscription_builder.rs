@@ -1,26 +1,28 @@
 use session::Session;
-use subscription::{Subscription, AckMode};
+use subscription::{Subscription, AckMode, MessageHandler};
+use handler::Handler;
 use frame::Frame;
 use header::HeaderList;
 use option_setter::OptionSetter;
 use std::io::Result;
 
-pub struct SubscriptionBuilder<'builder, 'session: 'builder> {
-    pub session: &'builder mut Session<'session>,
+pub struct SubscriptionBuilder<'builder, 'session: 'builder, H: 'session> where H: Handler {
+    pub session: &'builder mut Session<'session, H>,
     pub destination: String,
     pub ack_mode: AckMode,
-    // pub handler: Box<MessageHandler>,
+    pub handler: MessageHandler<H>,
     pub headers: HeaderList,
 }
 
-impl<'builder, 'session, 'context> SubscriptionBuilder<'builder, 'session> {
+impl<'builder, 'session, 'context, H> SubscriptionBuilder<'builder, 'session, H> where H: Handler {
     #[allow(dead_code)]
     pub fn start(mut self) -> Result<String> {
         let next_id = self.session.generate_subscription_id();
         let subscription = Subscription::new(next_id,
                                              &self.destination,
                                              self.ack_mode,
-                                             self.headers.clone());
+                                             self.headers.clone(),
+                                             self.handler);
         let mut subscribe_frame = Frame::subscribe(&subscription.id,
                                                    &self.destination,
                                                    self.ack_mode);
@@ -39,8 +41,8 @@ impl<'builder, 'session, 'context> SubscriptionBuilder<'builder, 'session> {
     }
 
     #[allow(dead_code)]
-    pub fn with<T>(self, option_setter: T) -> SubscriptionBuilder<'builder, 'session>
-        where T: OptionSetter<SubscriptionBuilder<'builder, 'session>>
+    pub fn with<T>(self, option_setter: T) -> SubscriptionBuilder<'builder, 'session, H>
+        where T: OptionSetter<SubscriptionBuilder<'builder, 'session, H>>
     {
         option_setter.set_option(self)
     }

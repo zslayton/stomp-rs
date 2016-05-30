@@ -11,7 +11,7 @@ extern crate unicode_segmentation;
 
 use session::Client; //TODO: Make new module for Client
 
-pub fn client() -> Client {
+pub fn client<H>() -> Client<H> where H: handler::Handler + 'static {
     Client::new()
 }
 
