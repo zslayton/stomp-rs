@@ -12,8 +12,6 @@ use std::str::from_utf8;
 use std::mem;
 use frame::{Frame, Transmission};
 use lifeguard::Pool;
-use std::collections::VecDeque;
-use frame::Transmission::*;
 
 const DEFAULT_STRING_POOL_SIZE: usize = 4;
 const DEFAULT_STRING_POOL_MAX_SIZE: usize = 32;
@@ -31,7 +29,7 @@ struct ParseState {
     command: Option<String>,
     headers: HeaderList,
     section: FrameSection,
-    offset: u32,
+    offset: usize,
 }
 
 impl ParseState {
@@ -57,10 +55,10 @@ pub struct FrameBuffer<'a> {
 }
 
 impl<'a> FrameBuffer<'a> {
-    pub fn from(bytes: &'a [u8]) -> FrameBuffer<'a> {
+    pub fn from(bytes: &'a [u8], offset: usize) -> FrameBuffer<'a> {
         FrameBuffer {
             bytes: bytes,
-            offset: 0,
+            offset: offset
         }
     }
 
@@ -73,6 +71,7 @@ impl<'a> FrameBuffer<'a> {
     }
 
     pub fn find_next(&self, needle: u8) -> Option<usize> {
+        debug!("Searching for next {} starting from {}", needle, self.offset);
         self.remaining().iter().position(|byte| *byte == needle)
     }
 
@@ -134,9 +133,9 @@ impl Codec {
         }
     }
 
-    pub fn reset(&mut self) {
-        self.reset_parse_state();
-    }
+    // pub fn reset(&mut self) {
+    //     self.reset_parse_state();
+    // }
 
     pub fn read_transmission<'a>(&mut self, buffer: &mut FrameBuffer<'a>) -> Option<Transmission> {
         match self.parse_state.section {
@@ -203,7 +202,8 @@ impl Codec {
     }
 
     fn reset_parse_state(&mut self) {
-        self.parse_state.section = FrameSection::Command;
+        //self.parse_state.section = FrameSection::Command;
+        self.parse_state = ParseState::new(); //TODO: Only for dumb version of codec
     }
 
     fn read_command<'a>(&mut self, buffer: &mut FrameBuffer<'a>) -> ReadCommandResult {
@@ -266,6 +266,7 @@ impl Codec {
                                        content_length: usize)
                                        -> Option<Vec<u8>> {
         debug!("Reading body by content length.");
+        debug!("HEADERS: {:?}", self.parse_state.headers);
         let bytes_needed = content_length + 1; // null octet
         if buffer.remaining().len() < bytes_needed {
             debug!("Not enough bytes to form body; needed {}, only had {}.",
@@ -309,16 +310,31 @@ impl mai::Codec<Transmission> for Codec {
 
     fn encode(&mut self, message: &Transmission, mut buffer: &mut [u8]) -> mai::EncodingResult {
         match message.write(&mut buffer) {
-            Ok(_) => Ok(BytesWritten(100)), //TODO: Get a real number back from the write
+            Ok(BytesWritten(bytes_written)) => Ok(BytesWritten(bytes_written)),
             Err(_) => Err(EncodingError::InsufficientBuffer),
         }
     }
 
     fn decode(&mut self, buffer: &[u8]) -> mai::DecodingResult<Transmission> {
-        let buffer = &mut FrameBuffer::from(buffer);
-        match self.read_transmission(buffer) {
+        // let old_offset = self.parse_state.offset;
+        // let bytes_available = buffer.len();
+        // debug!("old_offset: {}, available: {}", old_offset, bytes_available);
+
+        // self.parse_state.offset = 0;
+        // self.parse_state.section = FrameSection::Command;
+        self.parse_state = ParseState::new();
+
+        let buffer = &mut FrameBuffer::from(buffer, self.parse_state.offset);
+        let decoding_result = match self.read_transmission(buffer) {
             Some(transmission) => Ok(DecodedFrame::new(transmission, BytesRead(buffer.consumed()))),
-            None => Err(DecodingError::IncompleteFrame),
-        }
+            None => {
+                debug!("Partial decode occurred. Buffer has {} bytes remaining.", buffer.remaining().len());
+                Err(DecodingError::IncompleteFrame)
+            },
+        };
+        // debug!("consumed: {}", buffer.consumed());
+        // self.parse_state.offset = bytes_available - buffer.consumed();
+        // debug!("new_offset: {}", self.parse_state.offset);
+        decoding_result
     }
 }

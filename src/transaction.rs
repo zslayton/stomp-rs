@@ -5,17 +5,16 @@ use std::io::Result;
 use header::Header;
 use session::{Session, SessionContext};
 
-pub struct Transaction<'tx, 'session: 'tx, 'context: 'session> {
+pub struct Transaction<'tx, 'session: 'tx> {
     pub id: String,
-    pub session: &'tx mut Session<'session, 'context>,
+    pub session: &'tx mut Session<'session>,
 }
 
-impl<'tx, 'session, 'context> Transaction<'tx, 'session, 'context> {
-    pub fn new(id: u32,
-               session: &'tx mut Session<'session, 'context>)
-               -> Transaction<'tx, 'session, 'context> {
+impl<'tx, 'session, 'stream> Transaction<'tx, 'session> {
+    pub fn new(session: &'tx mut Session<'session>)
+               -> Transaction<'tx, 'session> {
         Transaction {
-            id: format!("tx/{}", id),
+            id: format!("tx/{}", session.generate_transaction_id()),
             session: session,
         }
     }
@@ -23,7 +22,7 @@ impl<'tx, 'session, 'context> Transaction<'tx, 'session, 'context> {
     pub fn message<'builder, T: ToFrameBody>(&'builder mut self,
                                              destination: &str,
                                              body_convertible: T)
-                                             -> MessageBuilder<'builder, 'session, 'context> {
+                                             -> MessageBuilder<'builder, 'session> {
         let mut send_frame = Frame::send(destination, body_convertible.to_frame_body());
         send_frame.headers.push(Header::new("transaction", self.id.as_ref()));
         MessageBuilder {

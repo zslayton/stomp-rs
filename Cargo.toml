@@ -16,7 +16,7 @@ name = "stomp"
 "lifeguard" = "0.5"
 "unicode-segmentation" = "0.1"
 "log" = "0.3"
-"mio" = "0.4.4"
+"mio" = "0.5"
 
 [dependencies.mai]
 path = "/home/zslayton/mai/"

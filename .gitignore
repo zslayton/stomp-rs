@@ -1,6 +1,8 @@
 src/**/target/**
 target/**
 examples/**/target/**
+**.bk
+**/x
 **.swp
 **callgrind.out.*
 **perf.data*

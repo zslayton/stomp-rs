@@ -87,7 +87,7 @@ impl Frame {
 
     pub fn to_str(&self) -> String {
         let space_required = self.count_bytes();
-        let mut frame_string = String::with_capacity(space_required);
+        let mut frame_string = String::with_capacity(space_required); // Faster to just allocate?
         frame_string.push_str(self.command.as_ref());
         frame_string.push_str("\n");
         for header in self.headers.iter() {
@@ -265,9 +265,9 @@ impl Frame {
         let send_frame = Frame {
             command: "SEND".to_string(),
             headers: header_list![
-        "destination" => destination,
-        "content-length" => body.len().to_string().as_ref()
-      ],
+              "destination" => destination,
+              "content-length" => body.len().to_string().as_ref()
+            ],
             body: body.to_vec(),
         };
         send_frame

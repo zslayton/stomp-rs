@@ -88,7 +88,7 @@ impl HeaderCodec {
         let encoded_value = self.encode_value(value);
         raw_string.push_str(":");
         raw_string.push_str(&encoded_value);
-        self.strings.attach(encoded_value);
+        //self.strings.attach(encoded_value);
         Header {
             buffer: raw_string,
             delimiter_index: key.len() as u32,
@@ -96,7 +96,7 @@ impl HeaderCodec {
     }
 
     fn encode_value(&mut self, value: &str) -> String {
-        let mut encoded = self.strings.detached();
+        let mut encoded = String::new();//self.strings.detached();
         for grapheme in UnicodeSegmentation::graphemes(value, true) {
             match grapheme {
                 "\\" => encoded.push_str(r"\\"),// Order is significant
@@ -110,21 +110,24 @@ impl HeaderCodec {
     }
 
     pub fn decode(&mut self, raw_string: &str) -> Option<Header> {
-        let string = self.strings.new_from(raw_string).detach();
+        let string = raw_string.to_owned();//self.strings.new_from(raw_string).detach();
         self.decode_string(string)
     }
 
     pub fn decode_string(&mut self, raw_string: String) -> Option<Header> {
         let delimiter_index = match raw_string.find(':') {
             Some(index) => index,
-            None => return None,
+            None => {
+                warn!("Invalid header: '{}'", raw_string);
+                return None;
+            },
         };
         let tmp_header = Header {
             buffer: raw_string,
             delimiter_index: delimiter_index as u32,
         };
         let header = self.decode_key_value(tmp_header.get_key(), tmp_header.get_value());
-        self.recycle(tmp_header);
+        //self.recycle(tmp_header);
         Some(header)
     }
 
@@ -134,7 +137,7 @@ impl HeaderCodec {
         let decoded_value = self.decode_value(value);
         raw_string.push_str(":");
         raw_string.push_str(&decoded_value);
-        self.strings.attach(decoded_value);
+        //self.strings.attach(decoded_value);
         Header {
             buffer: raw_string,
             delimiter_index: key.len() as u32,
@@ -143,7 +146,7 @@ impl HeaderCodec {
 
     fn decode_value(&mut self, value: &str) -> String {
         let mut is_escaped = false;
-        let mut decoded = self.strings.detached();
+        let mut decoded = String::new();//self.strings.detached();
         for grapheme in UnicodeSegmentation::graphemes(value, true) {
             if !is_escaped {
                 match grapheme {
