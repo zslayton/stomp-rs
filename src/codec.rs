@@ -1,8 +1,6 @@
 use mai;
 use mai::{DecodingResult, DecodedFrame, DecodingError, BytesWritten, BytesRead, EncodingResult,
           EncodingError};
-#[macro_use]
-use header;
 use header::HeaderList;
 use header::Header;
 use header::ContentLength;
