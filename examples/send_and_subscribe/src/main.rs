@@ -2,7 +2,7 @@
 extern crate env_logger;
 extern crate stomp;
 use stomp::frame::Frame;
-use stomp::header::{Header, SuppressedHeader};
+use stomp::header::{Header, SuppressedHeader, StompHeaderSet, Destination};
 use stomp::subscription::AckOrNack::{self, Ack};
 use stomp::subscription::AckMode;
 use stomp::connection::{HeartBeat, Credentials};
@@ -28,6 +28,11 @@ impl ExampleSession {
         println!("Another droll reference!: '{}'", std::str::from_utf8(&frame.body).expect("Non-utf8 bytes"));
         Ack
     }
+
+    fn on_subscription_receipt(&mut self, _session: &mut Session<Self>, original_frame: &Frame, receipt: &Frame) {
+        let Destination(destination) = original_frame.headers.get_destination().unwrap();
+        println!("Received a Receipt for our subscription to '{}':\n{}", destination, receipt);
+    }
 }
 
 impl stomp::handler::Handler for ExampleSession {
@@ -38,16 +43,12 @@ impl stomp::handler::Handler for ExampleSession {
         let _ = session.subscription(destination, Self::on_gilbert_and_sullivan_reference)
                        .with(AckMode::Auto)
                        .with(Header::new("custom-subscription-header", "lozenge"))
-                       .with(ReceiptHandler::new(|_: &Frame| println!("Subscribed successfully.")))
+                       .with(ReceiptHandler(Self::on_subscription_receipt))
                        .start();
 
         let _ = session.message(destination, "Animal").send();
         let _ = session.message(destination, "Vegetable").send();
         let _ = session.message(destination, "Mineral").send();
-    }
-
-    fn on_receipt(&mut self, _session: &mut Session<Self>, receipt: &Frame) {
-        println!("Received a Receipt:\n{}", receipt);
     }
 
     fn on_error(&mut self, _session: &mut Session<Self>, frame: &Frame) {

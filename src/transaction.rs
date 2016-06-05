@@ -4,7 +4,7 @@ use message_builder::MessageBuilder;
 use std::io::Result;
 use header::Header;
 use handler::Handler;
-use session::{Session, SessionContext};
+use session::{Session};
 
 pub struct Transaction<'tx, 'session: 'tx, H: 'session> where H: Handler {
     pub id: String,
@@ -26,10 +26,7 @@ impl<'tx, 'session, 'stream, H> Transaction<'tx, 'session, H> where H: Handler {
                                              -> MessageBuilder<'builder, 'session, H> {
         let mut send_frame = Frame::send(destination, body_convertible.to_frame_body());
         send_frame.headers.push(Header::new("transaction", self.id.as_ref()));
-        MessageBuilder {
-            session: self.session,
-            frame: send_frame,
-        }
+        MessageBuilder::new(self.session, send_frame)
     }
 
     // TODO: See if it's feasible to do this via command_sender

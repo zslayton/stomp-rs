@@ -2,7 +2,7 @@ use mai::*;
 use protocol::StompProtocol;
 use timeout::Timeout;
 use frame::{Frame, Transmission};
-use session::{self, Session, SessionEventHandler};
+use session::{self, Session};
 use subscription::AckMode;
 use subscription::AckOrNack;
 use subscription::MessageHandler;
@@ -32,7 +32,7 @@ impl <H> Handler<StompProtocol<H>> for SessionManager<H> where H: handler::Handl
             CompleteFrame(mut frame) => {
                 debug!("Received frame!:\n{}", frame);
                 self.reset_rx_heartbeat_timeout(&mut session);
-                event_handler.on_before_receive(&mut frame);
+                //event_handler.on_before_receive(&mut frame);
                 self.dispatch(&mut session, event_handler, &mut frame);
             }
             ConnectionClosed => {
@@ -43,7 +43,7 @@ impl <H> Handler<StompProtocol<H>> for SessionManager<H> where H: handler::Handl
     }
 
     fn on_timeout(&mut self, context: &mut Context<StompProtocol<H>>, timeout: Timeout) {
-        let (mut session, mut event_handler) = Session::from(context);
+        let (mut session, mut _event_handler) = Session::from(context);
         match timeout {
             Timeout::SendHeartBeat => {
                 debug!("Sending heartbeat");
@@ -56,14 +56,14 @@ impl <H> Handler<StompProtocol<H>> for SessionManager<H> where H: handler::Handl
         }
     }
 
-    fn on_error(&mut self, context: &mut Context<StompProtocol<H>>, error: &Error) {
+    fn on_error(&mut self, _context: &mut Context<StompProtocol<H>>, error: &Error) {
         // This API needs to be fleshed out. Currently only ERROR frames are exposed
         // to the user of the stomp library; IO errors need to be surfaced too.
         panic!("ERROR: {:?}", error);
     }
 
     fn on_closed(&mut self, context: &mut Context<StompProtocol<H>>) {
-        let (mut session, mut event_handler) = Session::from(context);
+        let (mut session, mut _event_handler) = Session::from(context);
         info!("Connection closed.");
         self.clear_rx_heartbeat_timeout(&mut session);
         self.clear_tx_heartbeat_timeout(&mut session);
@@ -81,7 +81,7 @@ impl <H> SessionManager<H> where H: handler::Handler {
         // Check for ERROR frame
         match frame.command.as_ref() {
             "ERROR" => return event_handler.on_error(session, &frame),
-            "RECEIPT" => return self.handle_receipt(session, event_handler, frame), // TODO: Store Frame and pass to on_receipt callback?
+            "RECEIPT" => return self.handle_receipt(session, event_handler, frame),
             "CONNECTED" => return self.on_connected_frame_received(session, event_handler, &frame),
             _ => debug!("Received a frame of type {}", &frame.command), // No operation
         };
@@ -99,7 +99,6 @@ impl <H> SessionManager<H> where H: handler::Handler {
                                                     .expect("Frame did not contain a \
                                                              subscription header.");
 
-
              {
                  // Take note of the ack_mode used by this Subscription
                  let subscription = session
@@ -111,7 +110,6 @@ impl <H> SessionManager<H> where H: handler::Handler {
                  ack_mode = subscription.ack_mode;
                  callback = subscription.handler;
              }
-
 
             // Invoke the message callback, providing the frame
             //callback_result = event_handler.on_message(session, frame);
@@ -214,10 +212,20 @@ impl <H> SessionManager<H> where H: handler::Handler {
                                              .headers
                                              .get_receipt_id()
                                              .expect("Received RECEIPT frame without a receipt-id");
+
         if *receipt_id == "msg/disconnect" { //TODO: Make this a reference to a string in the `frame` mod
             return event_handler.on_disconnected(session);
         }
-        event_handler.on_receipt(session, frame);
+        // event_handler.on_receipt(session, frame);
+        let outstanding_receipt_handler = session
+            .state()
+            .outstanding_receipts
+            .remove(*receipt_id)
+            .expect("Did not have a handler on file for receipt-id received.");
+        let original_frame = outstanding_receipt_handler.original_frame;
+        let receipt_handler = outstanding_receipt_handler.receipt_handler;
+
+        receipt_handler(event_handler, session, &original_frame, &frame);
     }
 
     pub fn register_tx_heartbeat_timeout(&mut self, session: &mut Session<H>) {

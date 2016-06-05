@@ -4,7 +4,7 @@ use subscription_builder::SubscriptionBuilder;
 use header::{Header, SuppressedHeader, ContentType};
 use connection::{HeartBeat, Credentials, OwnedCredentials};
 use subscription::AckMode;
-use session::{ToFrameHandler, ReceiptHandler};
+use session::{ReceiptRequest, ReceiptHandler, ReceiptHandlerFn};
 use handler::Handler;
 
 pub trait OptionSetter<T> {
@@ -85,26 +85,22 @@ impl <'builder, 'session, 'context, H> OptionSetter<SubscriptionBuilder<'builder
   }
 }
 
-impl <'builder, 'session, 'context, T, H> OptionSetter<MessageBuilder<'builder, 'session, H>> for ReceiptHandler<T> where T : ToFrameHandler, H: Handler {
+impl <'builder, 'session, 'context, H> OptionSetter<MessageBuilder<'builder, 'session, H>> for ReceiptHandler<H> where H: Handler {
   fn set_option(self, mut builder: MessageBuilder<'builder, 'session, H>) -> MessageBuilder<'builder, 'session, H> {
     let next_id = builder.session.generate_receipt_id();
     let receipt_id = format!("message/{}", next_id);
-    let handler_convertible = self.handler;
-    let handler = handler_convertible.to_frame_handler();
+    builder.receipt_request = Some(ReceiptRequest::new(receipt_id.clone(), self.0));
     builder.frame.headers.push(Header::new("receipt", receipt_id.as_ref()));
-// builder.session.context.session().receipt_handlers.insert(receipt_id.to_string(), handler);
     builder
   }
 }
 
-impl <'builder, 'session, 'context, T, H> OptionSetter<SubscriptionBuilder<'builder, 'session, H>> for ReceiptHandler<T> where T : ToFrameHandler, H: Handler {
+impl <'builder, 'session, 'context, H> OptionSetter<SubscriptionBuilder<'builder, 'session, H>> for ReceiptHandler<H> where H: Handler {
   fn set_option(self, mut builder: SubscriptionBuilder<'builder, 'session, H>) -> SubscriptionBuilder<'builder, 'session, H> {
     let next_id = builder.session.generate_receipt_id();
     let receipt_id = format!("message/{}", next_id);
-    let handler_convertible = self.handler;
-    let handler = handler_convertible.to_frame_handler();
+    builder.receipt_request = Some(ReceiptRequest::new(receipt_id.clone(), self.0));
     builder.headers.push(Header::new("receipt", receipt_id.as_ref()));
-// builder.session.context.session().receipt_handlers.insert(receipt_id.to_string(), handler);
     builder
   }
 }

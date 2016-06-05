@@ -4,7 +4,6 @@ use header::{HeaderList, Header};
 
 use session::Client;
 use session::SessionData;
-use session::SessionEventHandler;
 
 use std::net::SocketAddr;
 use std::net::IpAddr;

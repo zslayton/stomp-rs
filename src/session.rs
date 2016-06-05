@@ -35,72 +35,6 @@ use mai::ProtocolEngine;
 
 use session_manager::SessionManager;
 
-pub trait FrameHandler: Send {
-    fn on_frame(&mut self, &Frame);
-}
-
-pub trait FrameHandlerMut: Send {
-    fn on_frame(&mut self, &mut Frame);
-}
-
-impl<F> FrameHandler for F
-    where F: FnMut(&Frame) + Send
-{
-    fn on_frame(&mut self, frame: &Frame) {
-        self(frame)
-    }
-}
-
-impl<F> FrameHandlerMut for F
-    where F: FnMut(&mut Frame) + Send
-{
-    fn on_frame(&mut self, frame: &mut Frame) {
-        self(frame)
-    }
-}
-
-pub trait ToFrameHandler {
-    fn to_frame_handler(self) -> Box<FrameHandler>;
-}
-
-pub trait ToFrameHandlerMut {
-    fn to_frame_handler_mut(self) -> Box<FrameHandlerMut>;
-}
-
-impl<T> ToFrameHandler for T
-    where T: FrameHandler + 'static
-{
-    fn to_frame_handler(self) -> Box<FrameHandler> {
-        Box::new(self) as Box<FrameHandler>
-    }
-}
-
-impl<T> ToFrameHandlerMut for T
-    where T: FrameHandlerMut + 'static
-{
-    fn to_frame_handler_mut(self) -> Box<FrameHandlerMut> {
-        Box::new(self) as Box<FrameHandlerMut>
-    }
-}
-
-pub struct ReceiptHandler<T>
-    where T: ToFrameHandler
-{
-    pub handler: T,
-    _marker: PhantomData<T>,
-}
-
-impl<T> ReceiptHandler<T>
-    where T: ToFrameHandler
-{
-    pub fn new(val: T) -> ReceiptHandler<T> {
-        ReceiptHandler {
-            handler: val,
-            _marker: PhantomData,
-        }
-    }
-}
-
 pub struct Client<H> where H: Handler {
     pub engine: ProtocolEngine<StompProtocol<H>>,
 }
@@ -120,6 +54,37 @@ impl<H> Client<H> where H: Handler + 'static {
     }
 }
 
+pub struct OutstandingReceiptHandler<H> where H: Handler {
+    pub original_frame: Frame,
+    pub receipt_handler: ReceiptHandlerFn<H>
+}
+
+impl <H> OutstandingReceiptHandler<H> where H: Handler {
+    pub fn new(original_frame: Frame, receipt_handler: ReceiptHandlerFn<H>) -> Self {
+        OutstandingReceiptHandler {
+            original_frame: original_frame,
+            receipt_handler: receipt_handler
+        }
+    }
+}
+
+pub type ReceiptHandlerFn<H> = fn(&mut H, &mut Session<H>, &Frame, &Frame);
+pub struct ReceiptHandler<H: Handler>(pub ReceiptHandlerFn<H>);
+
+pub struct ReceiptRequest<H: Handler> {
+    pub id: String,
+    pub handler: ReceiptHandlerFn<H>
+}
+
+impl <H: Handler> ReceiptRequest<H> {
+    pub fn new(id: String, handler: ReceiptHandlerFn<H>) -> Self {
+        ReceiptRequest {
+            id: id,
+            handler: handler
+        }
+    }
+}
+
 pub struct SessionState<H> where H: Handler {
     next_transaction_id: u32,
     next_subscription_id: u32,
@@ -130,6 +95,7 @@ pub struct SessionState<H> where H: Handler {
     pub rx_heartbeat_timeout: Option<mio::Timeout>,
     pub tx_heartbeat_timeout: Option<mio::Timeout>,
     pub subscriptions: HashMap<String, Subscription<H>>,
+    pub outstanding_receipts: HashMap<String, OutstandingReceiptHandler<H>>
 }
 
 impl <H> SessionState<H> where H: Handler {
@@ -144,11 +110,10 @@ impl <H> SessionState<H> where H: Handler {
             tx_heartbeat_ms: None,
             tx_heartbeat_timeout: None,
             subscriptions: HashMap::new(),
+            outstanding_receipts: HashMap::new(),
         }
     }
 }
-
-pub type SessionEventHandler = Box<Handler + 'static>;
 
 pub struct SessionData<H> where H: Handler {
     config: SessionConfig,
@@ -193,7 +158,7 @@ impl <H> SessionData<H> where H: Handler {
 
 impl <'session, H> Session<'session, H> where H: Handler {
     pub fn send(&mut self, frame: Frame) -> Result<()> {
-        // self.on_before_send_callback.on_frame(&mut frame);
+        //self.on_before_send_callback.on_frame(&mut frame);
         match self.stream.send(CompleteFrame(frame)) {
             Ok(_) => Ok(()),//FIXME: Replace 'Other' below with a more meaningful ErrorKind
             Err(_) => {
@@ -226,27 +191,16 @@ impl <'session, H> Session<'session, H> where H: Handler {
                                              body_convertible: T)
                                              -> MessageBuilder<'builder, 'session, H> {
         let send_frame = Frame::send(destination, body_convertible.to_frame_body());
-        //let (session, _event_handler) = self.session_and_handler()
-        MessageBuilder {
-            session: self,
-            frame: send_frame,
-        }
+        MessageBuilder::new(self, send_frame)
     }
 
     pub fn subscription<'builder>(&'builder mut self,
                                      destination: &str,
                                      message_handler: MessageHandler<H>
                                  )
-                                     -> SubscriptionBuilder<'builder, 'session, H>
+                                 -> SubscriptionBuilder<'builder, 'session, H>
     {
-        //let message_handler: Box<MessageHandler> = handler_convertible.to_message_handler();
-        SubscriptionBuilder {
-            session: self,
-            destination: destination.to_owned(),
-            ack_mode: AckMode::Auto,
-            handler: message_handler,
-            headers: HeaderList::new(),
-        }
+        SubscriptionBuilder::new(self, destination.to_owned(), message_handler)
     }
 
     pub fn begin_transaction<'b>(&'b mut self) -> Result<Transaction<'b, 'session, H>> {
@@ -265,11 +219,8 @@ impl <'session, H> Session<'session, H> where H: Handler {
         self.state.pending_disconnect = true;
     }
 
-    // pub fn from<'a, 'b: 'a>(context: &'a mut Context<'b, StompProtocol>)
-    //                                -> (Session<'a, 'b>, &'a mut SessionEventHandler) {
     pub fn from<'a, 'b: 'a>(context: &'a mut Context<'b, StompProtocol<H>>)
                                    -> (Session<'a, H>, &'a mut H) {
-        //let context: &mut Context<StompProtocol> = &mut self.context;
         let (stream, session_data) = context.stream_and_session();
         let (mut config, mut state, mut event_handler) = session_data.split();
         let session = Session {
@@ -297,23 +248,6 @@ pub struct Session<'session, H: 'session> where H: Handler {
     config: &'session mut SessionConfig,
     state: &'session mut SessionState<H>,
     stream: StreamHandle<'session, StompProtocol<H>>,
-}
-
-pub struct SessionContext<'session, 'context: 'session, H: 'context> where H: Handler {
-    pub context: &'session mut Context<'context, StompProtocol<H>>,
-}
-
-impl<'session, 'context: 'session, H: 'session> SessionContext<'session, 'context, H> where H: Handler {
-    pub fn new(context: &'session mut Context<'context, StompProtocol<H>>)
-               -> SessionContext<'session, 'context, H> {
-        SessionContext { context: context }
-    }
-
-    // pub fn outstanding_receipts(&mut self) -> Vec<String> {
-    //     self.context.session().receipt_handlers.keys().map(|key| key.to_owned()).collect()
-    // }
-
-
 }
 
 // impl <'a> Handler for Session<'a> {
