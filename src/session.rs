@@ -1,452 +1,490 @@
 use std::collections::hash_map::HashMap;
-use std::mem;
-use std::thread;
-use std::ops::DerefMut;
-use std::io::Read;
-use std::io::Write;
 use std::io::Result;
-use std::io::Error;
-use std::io::ErrorKind::{Other};
-use std::marker::PhantomData;
-use connection::Connection;
-use subscription::AckMode;
-use subscription::AckMode::{Auto, Client, ClientIndividual};
-use subscription::AckOrNack;
-use subscription::AckOrNack::{Ack, Nack};
-use subscription::{Subscription, MessageHandler, ToMessageHandler};
-use frame::Frame;
-use frame::ToFrameBody;
-use frame::Transmission::{HeartBeat, CompleteFrame, ConnectionClosed};
-use header;
-use header::HeaderList;
-use header::ReceiptId;
-use header::StompHeaderSet;
+use connection::{self, Connection};
+use subscription::{AckMode, AckOrNack, Subscription};
+use frame::{Frame, Command, ToFrameBody};
+use frame::Transmission::{self, HeartBeat, CompleteFrame};
+use header::{self, Header};
 use transaction::Transaction;
-use session_builder::SessionBuilder;
+use session_builder::SessionConfig;
 use message_builder::MessageBuilder;
 use subscription_builder::SubscriptionBuilder;
-use frame_buffer::FrameBuffer;
+use tokio_core::net::{TcpStreamNew, TcpStream};
+use tokio_core::reactor::{Timeout, Handle};
+use tokio_io::codec::Framed;
+use codec::Codec;
+use tokio_io::AsyncRead;
+use futures::*;
 
-use mio::{EventLoop, Handler, Token, ReadHint, Timeout};
+const GRACE_PERIOD_MULTIPLIER: f32 = 2.0;
 
-pub trait FrameHandler {
-  fn on_frame(&mut self, &Frame);
+pub struct OutstandingReceipt {
+    pub original_frame: Frame,
 }
 
-pub trait FrameHandlerMut {
-  fn on_frame(&mut self, &mut Frame);
-}
-
-impl <F> FrameHandler for F where F: FnMut(&Frame) {
-  fn on_frame(&mut self, frame: &Frame) {
-    self(frame)
-  }
-}
-
-impl <F> FrameHandlerMut for F where F: FnMut(&mut Frame) {
-  fn on_frame(&mut self, frame: &mut Frame) {
-    self(frame)
-  }
-}
-
-pub trait ToFrameHandler <'a> {
-  fn to_frame_handler(self) -> Box<FrameHandler + 'a>;
-}
-
-pub trait ToFrameHandlerMut <'a> {
-  fn to_frame_handler_mut(self) -> Box<FrameHandlerMut + 'a>;
-}
-
-impl <'a, T: 'a> ToFrameHandler <'a> for T where T: FrameHandler {
-  fn to_frame_handler(self) -> Box<FrameHandler + 'a> {
-    Box::new(self) as Box<FrameHandler>
-  }
-}
-
-impl <'a, T: 'a> ToFrameHandlerMut <'a> for T where T: FrameHandlerMut {
-  fn to_frame_handler_mut(self) -> Box<FrameHandlerMut + 'a> {
-    Box::new(self) as Box<FrameHandlerMut>
-  }
-}
-
-pub struct ReceiptHandler<'a, T> where T: 'a + ToFrameHandler<'a> {
-  pub handler: T,
-  _marker: PhantomData<&'a T>
-}
-
-impl<'a, T> ReceiptHandler<'a, T> where T: 'a + ToFrameHandler<'a> {
-  pub fn new(val: T) -> ReceiptHandler<'a, T> {
-    let r = ReceiptHandler { handler: val, _marker: PhantomData };
-    r
-  }
-}
-
-const READ_BUFFER_SIZE: usize = 64 * 1024;
-const GRACE_PERIOD_MULTIPLIER: f64 = 2.0;
-
-pub struct Session <'a> {
-  session_builder: SessionBuilder<'a>,
-  pub connection : Connection,
-  read_buffer: Box<[u8; READ_BUFFER_SIZE]>,
-  frame_buffer: FrameBuffer,
-  next_transaction_id: u32,
-  next_subscription_id: u32,
-  next_receipt_id: u32,
-  rx_heartbeat_ms: u64,
-  rx_heartbeat_timeout: Option<Timeout>,
-  tx_heartbeat_ms: u64,
-  pub subscriptions: HashMap<String, Subscription <'a>>,
-  pub receipt_handlers: HashMap<String, Box<FrameHandler + 'a>>,
-  error_callback: Box<FrameHandler + 'a>,
-  frame_send_callback: Box<FrameHandlerMut + 'a>,
-  frame_receive_callback: Box<FrameHandlerMut + 'a>
-}
-
-pub enum StompTimeout {
-  SendHeartBeat,
-  ReceiveHeartBeat
-}
-
-impl <'a> Handler for Session<'a> {
-  type Timeout = StompTimeout;
-  type Message = ();
-
-  fn timeout(&mut self, event_loop: &mut EventLoop<Session<'a>>, timeout: StompTimeout) {
-    match timeout {
-      StompTimeout::SendHeartBeat => self.send_heartbeat(event_loop),
-      StompTimeout::ReceiveHeartBeat => {
-        debug!("Did not receive a heartbeat in time.");
-      },
-    }
-  }
-
-  fn readable(&mut self, event_loop: &mut EventLoop<Session<'a>>, _token: Token, _: ReadHint) {
-    debug!("Readable! Buffer size: {}", &mut self.read_buffer.len());
-    debug!("Frame buffer length: {}", &mut self.frame_buffer.len());
-    let bytes_read = match self.connection.tcp_stream.read(self.read_buffer.deref_mut()){
-      Ok(0) => {
-        info!("Read 0 bytes. Connection closed by remote host.");
-        self.reconnect(event_loop);
-        return;
-      },
-      Ok(bytes_read) => bytes_read,
-      Err(error) => {
-        info!("Error while reading: {}", error);
-        self.reconnect(event_loop);
-        return;
-      },
-    };
-    info!("Read {} bytes", bytes_read);
-    self.frame_buffer.append(&self.read_buffer[..bytes_read]);
-    let mut num_frames = 0u32;
-    loop {
-      debug!("Reading from frame buffer");
-      match self.frame_buffer.read_transmission() {
-        Some(HeartBeat) => self.on_heartbeat(event_loop),
-        Some(CompleteFrame(mut frame)) => {
-          debug!("Received frame!:\n{}", frame);
-          self.reset_rx_heartbeat_timeout(event_loop);
-          self.frame_receive_callback.on_frame(&mut frame);
-          self.dispatch(&mut frame);
-          self.frame_buffer.recycle_frame(frame);
-          num_frames += 1;
-        },
-        Some(ConnectionClosed) => {
-          info!("Connection closed by remote host.");
-          self.reconnect(event_loop);
-        },
-        None => {
-          debug!("Done. Read {} frames.", num_frames);
-          break;
+impl OutstandingReceipt {
+    pub fn new(original_frame: Frame) -> Self {
+        OutstandingReceipt {
+            original_frame: original_frame
         }
-      }
     }
-  } 
+}
+pub struct GenerateReceipt;
+pub struct ReceiptRequest {
+    pub id: String,
 }
 
-impl <'a> Session <'a> {
-  pub fn new(session_builder: SessionBuilder<'a>, connection: Connection, tx_heartbeat_ms: u32, rx_heartbeat_ms: u32) -> Session<'a> {
-    let modified_rx_heartbeat_ms : u32 = ((rx_heartbeat_ms as f64) * GRACE_PERIOD_MULTIPLIER) as u32;
-
-    Session {
-      session_builder: session_builder,
-      connection: connection,
-      frame_buffer: FrameBuffer::new(),
-      //TODO: Make this configurable
-      read_buffer: Box::new([0; READ_BUFFER_SIZE]),
-      next_transaction_id: 0,
-      next_subscription_id: 0,
-      next_receipt_id: 0,
-      rx_heartbeat_ms: modified_rx_heartbeat_ms as u64,
-      rx_heartbeat_timeout: None,
-      tx_heartbeat_ms: (tx_heartbeat_ms as f64 / 2f64) as u64, //FIXME: Make this configurable, change units
-      subscriptions: HashMap::new(),
-      receipt_handlers: HashMap::new(),
-      error_callback: Box::new(Session::default_error_callback) as Box<FrameHandler>,
-      frame_send_callback: Box::new(Session::default_frame_send_callback) as Box<FrameHandlerMut>,
-      frame_receive_callback: Box::new(Session::default_frame_receive_callback) as Box<FrameHandlerMut>
-    }
-  }
-
-  fn reconnect(&mut self, event_loop: &mut EventLoop<Session<'a>>) {
-    let delay_between_attempts = 3_000u32; //TODO: Make this configurable
-    event_loop.deregister(&self.connection.tcp_stream).ok().expect("Failed to deregister dead tcp connection.");
-    self.clear_rx_heartbeat_timeout(event_loop);
-    self.frame_buffer.reset();
-    loop {
-      match self.session_builder.clone().start() {
-        Ok(session) => {
-          info!("Reconnected successfully!");
-          let subscriptions = mem::replace(&mut self.subscriptions, HashMap::new());
-          let error_callback = mem::replace(&mut self.error_callback, Box::new(Session::default_error_callback) as Box<FrameHandler>);
-          mem::replace(self, session);
-          self.error_callback = error_callback;
-          self.subscriptions = subscriptions;
-          event_loop.register(&self.connection.tcp_stream, Token(0)).ok().expect("Couldn't register re-established connection with the event loop.");
-          self.register_rx_heartbeat_timeout(event_loop);
-          self.reset_rx_heartbeat_timeout(event_loop);
-          info!("Resubscribing to {} destinations", self.subscriptions.len());
-          let frames : Vec<Frame> = self.subscriptions
-            .values()
-            .map(|subscription| {
-              info!("Re-subscribing to '{}'", &subscription.destination);
-              let mut subscribe_frame = Frame::subscribe(&subscription.id, &subscription.destination, subscription.ack_mode);
-              subscribe_frame.headers.concat(&mut subscription.headers.clone());
-              subscribe_frame.headers.retain(|header| (*header).get_key() != "receipt"); //TODO: Find a way to clean this up.
-              subscribe_frame
-            }).collect();
-          for subscribe_frame in frames {
-            self.send(subscribe_frame).ok().expect("Couldn't re-subscribe.");
-          }
-          break;
-        },
-        Err(error) => {
-          info!("Failed to reconnect: {:?}, retrying again in {}ms", error, delay_between_attempts);
+impl ReceiptRequest {
+    pub fn new(id: String) -> Self {
+        ReceiptRequest {
+            id: id,
         }
-      };
-      debug!("Waiting {}ms before attempting to connect again.", delay_between_attempts);
-      thread::sleep_ms(delay_between_attempts);
     }
-  }
+}
 
-  fn register_tx_heartbeat_timeout(&self, event_loop: &mut EventLoop<Session<'a>>) {
-    if self.tx_heartbeat_ms <= 0 {
-      debug!("Heartbeat transmission ms is {}, no need to register a callback.", self.tx_heartbeat_ms);
-      return;
+pub struct SessionState {
+    next_transaction_id: u32,
+    next_subscription_id: u32,
+    next_receipt_id: u32,
+    pub rx_heartbeat_ms: Option<u32>,
+    pub tx_heartbeat_ms: Option<u32>,
+    pub rx_heartbeat_timeout: Option<Timeout>,
+    pub tx_heartbeat_timeout: Option<Timeout>,
+    pub subscriptions: HashMap<String, Subscription>,
+    pub outstanding_receipts: HashMap<String, OutstandingReceipt>
+}
+
+impl SessionState {
+    pub fn new() -> SessionState {
+        SessionState {
+            next_transaction_id: 0,
+            next_subscription_id: 0,
+            next_receipt_id: 0,
+            rx_heartbeat_ms: None,
+            rx_heartbeat_timeout: None,
+            tx_heartbeat_ms: None,
+            tx_heartbeat_timeout: None,
+            subscriptions: HashMap::new(),
+            outstanding_receipts: HashMap::new(),
+        }
     }
-    let _ = event_loop.timeout_ms(StompTimeout::SendHeartBeat, self.tx_heartbeat_ms);
-  }
+}
 
-  fn register_rx_heartbeat_timeout(&mut self, event_loop: &mut EventLoop<Session<'a>>) {
-    if self.rx_heartbeat_ms <= 0 {
-      debug!("Heartbeat receipt ms is {}, no need to register a callback.", self.tx_heartbeat_ms);
-      return;
+// *** Public API ***
+impl Session {
+    pub fn send_frame(&mut self, fr: Frame) {
+        self.send(Transmission::CompleteFrame(fr))
     }
-    let timeout = event_loop
-      .timeout_ms(StompTimeout::ReceiveHeartBeat, self.rx_heartbeat_ms)
-      .ok()
-      .expect("Could not register a timeout to receive a heartbeat.");
-    self.rx_heartbeat_timeout = Some(timeout);
-  }
+    pub fn message<'builder, T: ToFrameBody>(&'builder mut self,
+                                             destination: &str,
+                                             body_convertible: T)
+                                             -> MessageBuilder<'builder> {
+        let send_frame = Frame::send(destination, body_convertible.to_frame_body());
+        MessageBuilder::new(self, send_frame)
+    }
 
-  fn send_heartbeat(&mut self, event_loop: &mut EventLoop<Session<'a>>) {
-    debug!("Sending heartbeat");
-    self.connection.tcp_stream.write("\n".as_bytes()).ok().expect("Could not send a heartbeat. Connection failed.");
-    let _ = self.connection.tcp_stream.flush();
-    self.register_tx_heartbeat_timeout(event_loop);
-  }
+    pub fn subscription<'builder>(&'builder mut self,
+                                  destination: &str)
+                                  -> SubscriptionBuilder<'builder>
+    {
+        SubscriptionBuilder::new(self, destination.to_owned())
+    }
 
-  fn on_heartbeat(&mut self, event_loop: &mut EventLoop<Session<'a>>) {
-    debug!("Received HeartBeat");
-    self.reset_rx_heartbeat_timeout(event_loop);
-  }
+    pub fn begin_transaction<'b>(&'b mut self) -> Transaction<'b> {
+        let mut transaction = Transaction::new(self);
+        let _ = transaction.begin();
+        transaction
+    }
 
-  fn reset_rx_heartbeat_timeout(&mut self, event_loop: &mut EventLoop<Session<'a>>) {
-    debug!("Resetting heartbeat rx timeout");
-    self.clear_rx_heartbeat_timeout(event_loop);
-    self.register_rx_heartbeat_timeout(event_loop);
-  }
+    pub fn unsubscribe(&mut self, sub_id: &str) {
+        self.state.subscriptions.remove(sub_id);
+        let unsubscribe_frame = Frame::unsubscribe(sub_id.as_ref());
+        self.send(CompleteFrame(unsubscribe_frame))
+    }
 
-  fn clear_rx_heartbeat_timeout(&mut self, event_loop: &mut EventLoop<Session<'a>>) {
-    debug!("Clearing existing heartbeat rx timeout");
-    self.rx_heartbeat_timeout.map(|timeout| {
-      let result = event_loop.clear_timeout(timeout);
-      debug!("Reset complete -> {}", result);
-    });
-  }
+    pub fn disconnect(&mut self) {
+        self.send_frame(Frame::disconnect());
+    }
+    pub fn reconnect(&mut self) -> ::std::io::Result<()> {
+        use std::net::ToSocketAddrs;
+        use std::io;
 
-  fn default_error_callback(frame : &Frame) {
-    error!("ERROR received:\n{}", frame);
-  }
+        info!("Reconnecting...");
 
-  fn default_frame_send_callback(_frame : &mut Frame) {
-  }
+        let address = (&self.config.host as &str, self.config.port)
+            .to_socket_addrs()?.nth(0)
+            .ok_or(io::Error::new(io::ErrorKind::Other, "address provided resolved to nothing"))?;
+        self.stream = StreamState::Connecting(TcpStream::connect(&address, &self.hdl));
+        task::current().notify();
+        Ok(())
+    }
+    pub fn acknowledge_frame(&mut self, frame: &Frame, which: AckOrNack) {
+        if let Some(header::Ack(ack_id)) = frame.headers.get_ack() {
+            let ack_frame = if let AckOrNack::Ack = which {
+                Frame::ack(ack_id)
+            }
+            else {
+                Frame::nack(ack_id)
+            };
+            self.send_frame(ack_frame);
+        }
+    }
+}
+// *** pub(crate) API ***
+impl Session {
+    pub(crate) fn new(config: SessionConfig, stream: TcpStreamNew, hdl: Handle) -> Self {
+        Self {
+            config, hdl,
+            state: SessionState::new(),
+            events: vec![],
+            stream: StreamState::Connecting(stream)
+        }
+    }
+    pub(crate) fn generate_transaction_id(&mut self) -> u32 {
+        let id = self.state.next_transaction_id;
+        self.state.next_transaction_id += 1;
+        id
+    }
 
-  fn default_frame_receive_callback(_frame : &mut Frame) {
-  }
+    pub(crate) fn generate_subscription_id(&mut self) -> u32 {
+        let id = self.state.next_subscription_id;
+        self.state.next_subscription_id += 1;
+        id
+    }
 
-  pub fn on_error<T: 'a>(&mut self, handler_convertible: T) where T : ToFrameHandler<'a> + 'a {
-    let handler = handler_convertible.to_frame_handler();
-    self.error_callback = handler;
-  }
+    pub(crate) fn generate_receipt_id(&mut self) -> u32 {
+        let id = self.state.next_receipt_id;
+        self.state.next_receipt_id += 1;
+        id
+    }
+}
+// *** Internal API ***
+impl Session {
+    fn _send(&mut self, tx: Transmission) -> Result<()> {
+        if let StreamState::Connected(ref mut st) = self.stream {
+            st.start_send(tx)?;
+            st.poll_complete()?;
+        }
+        else {
+            warn!("sending {:?} whilst disconnected", tx);
+        }
+        Ok(())
+    }
+    fn send(&mut self, tx: Transmission) {
+        if let Err(e) = self._send(tx) {
+            self.on_disconnect(DisconnectionReason::SendFailed(e));
+        }
+    }
+    fn register_tx_heartbeat_timeout(&mut self) -> Result<()> {
+        use std::time::Duration;
+        if self.state.tx_heartbeat_ms.is_none() {
+            warn!("Trying to register TX heartbeat timeout, but not set!");
+            return Ok(());
+        }
+        let tx_heartbeat_ms = self.state.tx_heartbeat_ms.unwrap();
+        if tx_heartbeat_ms <= 0 {
+            debug!("Heartbeat transmission ms is {}, no need to register a callback.",
+                   tx_heartbeat_ms);
+            return Ok(());
+        }
+        let timeout = Timeout::new(Duration::from_millis(tx_heartbeat_ms as _), &self.hdl)?;
+        self.state.tx_heartbeat_timeout = Some(timeout);
+        Ok(())
+    }
 
-  pub fn on_before_send<T: 'a>(&mut self, handler_convertible: T) where T : ToFrameHandlerMut<'a> + 'a {
-    let handler = handler_convertible.to_frame_handler_mut();
-    self.frame_send_callback = handler;
-  }
+    fn register_rx_heartbeat_timeout(&mut self) -> Result<()> {
+        use std::time::Duration;
 
-  pub fn on_before_receive<T: 'a>(&mut self, handler_convertible: T) where T : ToFrameHandlerMut<'a> + 'a {
-    let handler = handler_convertible.to_frame_handler_mut();
-    self.frame_receive_callback = handler;
-  }
+        let rx_heartbeat_ms = self.state.rx_heartbeat_ms
+            .unwrap_or_else(|| {
+                debug!("Trying to register RX heartbeat timeout but no \
+                        rx_heartbeat_ms was set. This is expected for receipt \
+                        of CONNECTED.");
+                0
+            });
+        if rx_heartbeat_ms <= 0 {
+            debug!("Heartbeat receipt ms is {}, no need to register a callback.",
+                   rx_heartbeat_ms);
+            return Ok(());
+        }
+        let timeout = Timeout::new(Duration::from_millis(rx_heartbeat_ms as _), &self.hdl)?;
+        self.state.rx_heartbeat_timeout = Some(timeout);
+        Ok(())
+    }
 
-  fn handle_receipt(&mut self, frame: &mut Frame) {
-    match frame.headers.get_receipt_id() {
-      Some(ReceiptId(ref receipt_id)) => {
-        let mut handler = match self.receipt_handlers.remove(*receipt_id) {
-          Some(handler) => {
-            debug!("Calling handler for ReceiptId '{}'.", *receipt_id);
-            handler
-          },
-          None => panic!("Received unexpected RECEIPT '{}'", *receipt_id)
+    fn on_recv_data(&mut self) -> Result<()> {
+        if self.state.rx_heartbeat_ms.is_some() {
+            self.register_rx_heartbeat_timeout()?;
+        }
+        Ok(())
+    }
+
+    fn reply_to_heartbeat(&mut self) -> Result<()> {
+        debug!("Sending heartbeat");
+        self.send(HeartBeat);
+        self.register_tx_heartbeat_timeout()?;
+        Ok(())
+    }
+    fn on_disconnect(&mut self, reason: DisconnectionReason) {
+        info!("Disconnected.");
+        self.events.push(SessionEvent::Disconnected(reason));
+        if let StreamState::Connected(ref mut strm) = self.stream {
+            let _ = strm.get_mut().shutdown(::std::net::Shutdown::Both);
+        }
+        self.stream = StreamState::Failed;
+        self.state.tx_heartbeat_timeout = None;
+        self.state.rx_heartbeat_timeout = None;
+    }
+    fn on_stream_ready(&mut self) {
+        debug!("Stream ready!");
+        // Add credentials to the header list if specified
+        match self.config.credentials.clone() { // TODO: Refactor to avoid clone
+            Some(credentials) => {
+                debug!("Using provided credentials: login '{}', passcode '{}'",
+                       credentials.login,
+                       credentials.passcode);
+                let mut headers = &mut self.config.headers;
+                headers.push(Header::new("login", &credentials.login));
+                headers.push(Header::new("passcode", &credentials.passcode));
+            }
+            None => debug!("No credentials supplied."),
+        }
+
+        let connection::HeartBeat(client_tx_ms, client_rx_ms) = self.config.heartbeat;
+        let heart_beat_string = format!("{},{}", client_tx_ms, client_rx_ms);
+        debug!("Using heartbeat: {},{}", client_tx_ms, client_rx_ms);
+        self.config.headers.push(Header::new("heart-beat", heart_beat_string.as_ref()));
+
+        let connect_frame = Frame {
+            command: Command::Connect,
+            headers: self.config.headers.clone(), /* Cloned to allow this to be re-used */
+            body: Vec::new(),
         };
-        handler.on_frame(&frame);
-      },
-      None => panic!("Received RECEIPT frame without a receipt-id")
-    };
-  }
 
-  pub fn outstanding_receipts(&self) -> Vec<&str> {
-    self.receipt_handlers.keys().map(|key| key.as_ref()).collect()
-  }
-
-  fn generate_transaction_id(&mut self) -> u32 {
-    let id = self.next_transaction_id;
-    self.next_transaction_id += 1;
-    id
-  }
-
-  pub fn generate_subscription_id(&mut self) -> u32 {
-    let id = self.next_subscription_id;
-    self.next_subscription_id += 1;
-    id
-  }
-
-  pub fn generate_receipt_id(&mut self) -> u32 {
-    let id = self.next_receipt_id;
-    self.next_receipt_id += 1;
-    id
-  }
-
-  pub fn message<'b, T: ToFrameBody> (&'b mut self, destination: &str, body_convertible: T) -> MessageBuilder<'b, 'a> {
-    let send_frame = Frame::send(destination, body_convertible.to_frame_body());
-    MessageBuilder {
-     session: self,
-     frame: send_frame
+        self.send_frame(connect_frame);
     }
-  }
-
-  pub fn subscription<'b, 'c: 'a, T>(&'b mut self, destination: &'b str, handler_convertible: T) -> SubscriptionBuilder<'b, 'a, 'c> where T: ToMessageHandler<'c> {
-    let message_handler : Box<MessageHandler> = handler_convertible.to_message_handler();
-    SubscriptionBuilder{
-      session: self,
-      destination: destination,
-      ack_mode: AckMode::Auto,
-      handler: message_handler,
-      headers: HeaderList::new(),
-    }
-  }
-
-  pub fn unsubscribe(&mut self, sub_id: &str) -> Result<()> {
-     let _ = self.subscriptions.remove(sub_id);
-     let unsubscribe_frame = Frame::unsubscribe(sub_id.as_ref());
-     self.send(unsubscribe_frame)
-  }
-
-  pub fn disconnect(&mut self) -> Result<()> {
-    let disconnect_frame = Frame::disconnect();
-    self.send(disconnect_frame)
-  }
-
-  pub fn begin_transaction<'b>(&'b mut self) -> Result<Transaction<'b, 'a>> {
-    let mut transaction = Transaction::new(self.generate_transaction_id(), self);
-    let _ = try!(transaction.begin());
-    Ok(transaction)
-  }
-
-  pub fn send(&mut self, mut frame: Frame) -> Result<()> {
-    self.frame_send_callback.on_frame(&mut frame);
-    match frame.write(&mut self.connection.tcp_stream) {
-      Ok(_) => Ok(()),//FIXME: Replace 'Other' below with a more meaningful ErrorKind
-      Err(_) => Err(Error::new(Other, "Could not send frame: the connection to the server was lost."))
-    }
-  }
-
-  pub fn dispatch(&mut self, frame: &mut Frame) {
-    // Check for ERROR frame
-    match frame.command.as_ref() {
-       "ERROR" => return self.error_callback.on_frame(&frame),
-       "RECEIPT" => return self.handle_receipt(frame),
-        _ => {} // No operation
-    };
- 
-    let ack_mode : AckMode;
-    let callback_result : AckOrNack; 
-    { // This extra scope is required to free up `frame` and `self.subscriptions`
-      // following a borrow.
-
-      // Find the subscription ID on the frame that was received
-      let header::Subscription(sub_id) = 
-        frame.headers
-        .get_subscription()
-        .expect("Frame did not contain a subscription header.");
-
-      // Look up the appropriate Subscription object
-      let subscription = 
-         self.subscriptions
-         .get_mut(sub_id)
-         .expect("Received a message for an unknown subscription.");
-
-      // Take note of the ack_mode used by this Subscription
-      ack_mode = subscription.ack_mode;
-      // Invoke the callback in the Subscription, providing the frame
-      // Take note of whether this frame should be ACKed or NACKed
-      callback_result = (*subscription.handler).on_message(&frame);
+    fn on_message(&mut self, frame: Frame) {
+        let mut sub_data = None;
+        if let Some(header::Subscription(sub_id)) = frame.headers.get_subscription() {
+            if let Some(ref sub) = self.state.subscriptions.get(sub_id) {
+                sub_data = Some((sub.destination.clone(), sub.ack_mode));
+            }
+        }
+        if let Some((destination, ack_mode)) = sub_data {
+            self.events.push(SessionEvent::Message {
+                destination,
+                ack_mode,
+                frame
+            });
+        }
+        else {
+            self.events.push(SessionEvent::SubscriptionlessFrame(frame));
+        }
     }
 
-    debug!("Executing.");
-    match ack_mode {
-      Auto => {
-        debug!("Auto ack, no frame sent.");
-      }
-      Client | ClientIndividual => {
-        let header::Ack(ack_id) = 
-          frame.headers
-          .get_ack()
-          .expect("Message did not have an 'ack' header.");
-        match callback_result {
-          Ack =>  self.acknowledge_frame(ack_id),
-          Nack => self.negatively_acknowledge_frame(ack_id)
-        }.unwrap_or_else(|error|panic!(format!("Could not acknowledge frame: {}", error)));
-      } // Client | ...
+    fn on_connected_frame_received(&mut self, connected_frame: Frame) -> Result<()> {
+        // The Client's requested tx/rx HeartBeat timeouts
+        let connection::HeartBeat(client_tx_ms, client_rx_ms) = self.config.heartbeat;
+
+        // The timeouts the server is willing to provide
+        let (server_tx_ms, server_rx_ms) = match connected_frame.headers.get_heart_beat() {
+            Some(header::HeartBeat(tx_ms, rx_ms)) => (tx_ms, rx_ms),
+            None => (0, 0),
+        };
+
+        let (agreed_upon_tx_ms, agreed_upon_rx_ms) = Connection::select_heartbeat(client_tx_ms,
+                                                                                  client_rx_ms,
+                                                                                  server_tx_ms,
+                                                                                  server_rx_ms);
+        self.state.rx_heartbeat_ms = Some((agreed_upon_rx_ms as f32 * GRACE_PERIOD_MULTIPLIER) as u32);
+        self.state.tx_heartbeat_ms = Some(agreed_upon_tx_ms);
+
+        self.register_tx_heartbeat_timeout()?;
+        self.register_rx_heartbeat_timeout()?;
+
+        self.events.push(SessionEvent::Connected);
+
+        Ok(())
     }
-  } 
+    fn handle_receipt(&mut self, frame: Frame) {
+        let receipt_id = {
+            if let Some(header::ReceiptId(receipt_id)) = frame.headers.get_receipt_id() {
+                Some(receipt_id.to_owned())
+            }
+            else {
+                None
+            }
+        };
+        if let Some(receipt_id) = receipt_id {
+            if receipt_id == "msg/disconnect" {
+                self.on_disconnect(DisconnectionReason::Requested);
+            }
+            if let Some(entry) = self.state.outstanding_receipts.remove(&receipt_id) {
+                let original_frame = entry.original_frame;
+                self.events.push(SessionEvent::Receipt {
+                    id: receipt_id,
+                    original: original_frame,
+                    receipt: frame
+                });
+            }
+        }
+    }
 
-  fn acknowledge_frame(&mut self, ack_id: &str) -> Result<()> {
-    let ack_frame = Frame::ack(ack_id);
-    self.send(ack_frame)
-  }
+    fn poll_stream_complete(&mut self) {
+        let res = {
+            if let StreamState::Connected(ref mut fr) = self.stream {
+                fr.poll_complete()
+            }
+            else {
+                Ok(Async::NotReady)
+            }
+        };
+        if let Err(e) = res {
+            self.on_disconnect(DisconnectionReason::SendFailed(e));
+        }
+    }
+    fn poll_stream(&mut self) -> Async<Option<Transmission>> {
+        use self::StreamState::*;
+        loop {
+            match ::std::mem::replace(&mut self.stream, Failed) {
+                Connected(mut fr) => {
+                    match fr.poll() {
+                        Ok(Async::Ready(Some(r))) => {
+                            self.stream = Connected(fr);
+                            return Async::Ready(Some(r));
+                        },
+                        Ok(Async::Ready(None)) => {
+                            self.on_disconnect(DisconnectionReason::ClosedByOtherSide);
+                            return Async::NotReady;
+                        },
+                        Ok(Async::NotReady) => {
+                            self.stream = Connected(fr);
+                            return Async::NotReady;
+                        },
+                        Err(e) => {
+                            self.on_disconnect(DisconnectionReason::RecvFailed(e));
+                            return Async::NotReady;
+                        },
+                    }
+                },
+                Connecting(mut tsn) => {
+                    match tsn.poll() {
+                        Ok(Async::Ready(s)) => {
+                            let fr = s.framed(Codec);
+                            self.stream = Connected(fr);
+                            self.on_stream_ready();
+                        },
+                        Ok(Async::NotReady) => {
+                            self.stream = Connecting(tsn);
+                            return Async::NotReady;
+                        },
+                        Err(e) => {
+                            self.on_disconnect(DisconnectionReason::ConnectFailed(e));
+                            return Async::NotReady;
+                        },
+                    }
+                },
+                Failed => {
+                    return Async::NotReady;
+                },
+            }
+        }
+    }
+}
+#[derive(Debug)]
+pub enum DisconnectionReason {
+    RecvFailed(::std::io::Error),
+    ConnectFailed(::std::io::Error),
+    SendFailed(::std::io::Error),
+    ClosedByOtherSide,
+    HeartbeatTimeout,
+    Requested
+}
+pub enum SessionEvent {
+    Connected,
+    ErrorFrame(Frame),
+    Receipt {
+        id: String,
+        original: Frame,
+        receipt: Frame
+    },
+    Message {
+        destination: String,
+        ack_mode: AckMode,
+        frame: Frame
+    },
+    SubscriptionlessFrame(Frame),
+    UnknownFrame(Frame),
+    Disconnected(DisconnectionReason)
+}
+pub(crate) enum StreamState {
+    Connected(Framed<TcpStream, Codec>),
+    Connecting(TcpStreamNew),
+    Failed
+}
+pub struct Session {
+    config: SessionConfig,
+    pub(crate) state: SessionState,
+    stream: StreamState,
+    hdl: Handle,
+    events: Vec<SessionEvent>
+}
+impl Stream for Session {
+    type Item = SessionEvent;
+    type Error = ::std::io::Error;
 
-  fn negatively_acknowledge_frame(&mut self, ack_id: &str) -> Result<()>{
-    let nack_frame = Frame::nack(ack_id);
-    self.send(nack_frame)
-  }
+    fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
+        use frame::Transmission::*;
 
-  pub fn listen(&mut self) -> Result<()> {
-    let mut event_loop : EventLoop<Session<'a>> = EventLoop::new().unwrap();
-    let _ = event_loop.register(&self.connection.tcp_stream, Token(0));
-    self.register_tx_heartbeat_timeout(&mut event_loop);
-    self.register_rx_heartbeat_timeout(&mut event_loop);
-    event_loop.run(self)
-  }
+        while let Async::Ready(Some(val)) = self.poll_stream() {
+            match val {
+                HeartBeat => {
+                    debug!("Received heartbeat.");
+                    self.on_recv_data()?;
+                },
+                CompleteFrame(frame) => {
+                    debug!("Received frame: {:?}", frame);
+                    self.on_recv_data()?;
+                    match frame.command {
+                        Command::Error => self.events.push(SessionEvent::ErrorFrame(frame)),
+                        Command::Receipt => self.handle_receipt(frame),
+                        Command::Connected => self.on_connected_frame_received(frame)?,
+                        Command::Message => self.on_message(frame),
+                        _ => self.events.push(SessionEvent::UnknownFrame(frame))
+                    };
+                }
+            }
+        }
+
+        let rxh = self.state.rx_heartbeat_timeout
+            .as_mut()
+            .map(|t| t.poll())
+            .unwrap_or(Ok(Async::NotReady))?;
+
+        if let Async::Ready(_) = rxh {
+            self.on_disconnect(DisconnectionReason::HeartbeatTimeout);
+        }
+
+        let txh = self.state.tx_heartbeat_timeout
+            .as_mut()
+            .map(|t| t.poll())
+            .unwrap_or(Ok(Async::NotReady))?;
+
+        if let Async::Ready(_) = txh {
+            self.reply_to_heartbeat()?;
+        }
+
+        self.poll_stream_complete();
+
+        if self.events.len() > 0 {
+            if self.events.len() > 1 {
+                // make sure we get polled again, so we can get rid of our other events
+                task::current().notify();
+            }
+            Ok(Async::Ready(Some(self.events.remove(0))))
+        }
+        else {
+            Ok(Async::NotReady)
+        }
+    }
 }
