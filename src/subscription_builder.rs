@@ -1,39 +1,64 @@
-use session::Session;
-use subscription::{Subscription, MessageHandler, AckMode};
+use session::{Session, ReceiptRequest, OutstandingReceipt};
+use subscription::{Subscription, AckMode};
 use frame::Frame;
 use header::HeaderList;
 use option_setter::OptionSetter;
-use std::io::Result;
 
-pub struct SubscriptionBuilder <'a, 'session: 'a, 'sub: 'session> {
-  pub session: &'a mut Session<'session>,
-  pub destination: &'a str,
-  pub ack_mode: AckMode,
-  pub handler: Box<MessageHandler + 'sub>,
-  pub headers: HeaderList
+pub struct SubscriptionBuilder<'a> {
+    pub session: &'a mut Session,
+    pub destination: String,
+    pub ack_mode: AckMode,
+    pub headers: HeaderList,
+    pub receipt_request: Option<ReceiptRequest>
 }
 
-impl <'a, 'session, 'sub> SubscriptionBuilder <'a, 'session, 'sub> {
+impl<'a> SubscriptionBuilder<'a> {
+    pub fn new(session: &'a mut Session,
+               destination: String) -> Self {
+                SubscriptionBuilder {
+                    session: session,
+                    destination: destination,
+                    ack_mode: AckMode::Auto,
+                    headers: HeaderList::new(),
+                    receipt_request: None
+                }
+    }
 
-  #[allow(dead_code)] 
-  pub fn start(mut self) -> Result<String> {
-    let next_id = self.session.generate_subscription_id();
-    let subscription = Subscription::new(next_id, self.destination, self.ack_mode, self.headers.clone(), self.handler);
-    let mut subscribe_frame = Frame::subscribe(&subscription.id, self.destination, self.ack_mode);
+    #[allow(dead_code)]
+    pub fn start(mut self) -> String {
+        let next_id = self.session.generate_subscription_id();
+        let subscription = Subscription::new(next_id,
+                                             &self.destination,
+                                             self.ack_mode,
+                                             self.headers.clone());
+        let mut subscribe_frame = Frame::subscribe(&subscription.id,
+                                                   &self.destination,
+                                                   self.ack_mode);
 
-    subscribe_frame.headers.concat(&mut self.headers);
-   
-    try!(self.session.send(subscribe_frame));
-    debug!("Registering callback for subscription id '{}' from builder", subscription.id);
-    let id_to_return = subscription.id.to_string();
-    self.session.subscriptions.insert(subscription.id.to_string(), subscription);
-    Ok(id_to_return)
-  }
+        subscribe_frame.headers.concat(&mut self.headers);
 
-  #[allow(dead_code)] 
-  pub fn with<T>(self, option_setter: T) -> SubscriptionBuilder<'a, 'session, 'sub> where T: OptionSetter<SubscriptionBuilder<'a, 'session, 'sub>> {
-    option_setter.set_option(self) 
-  } 
+        self.session.send_frame(subscribe_frame.clone());
+
+        debug!("Registering callback for subscription id '{}' from builder",
+               subscription.id);
+        let id_to_return = subscription.id.to_string();
+        self.session.state.subscriptions.insert(subscription.id.to_string(), subscription);
+        if self.receipt_request.is_some() {
+            let request = self.receipt_request.unwrap();
+            self.session.state.outstanding_receipts.insert(
+                request.id,
+                OutstandingReceipt::new(
+                    subscribe_frame.clone(),
+                )
+            );
+        }
+        id_to_return
+    }
+
+    #[allow(dead_code)]
+    pub fn with<T>(self, option_setter: T) -> SubscriptionBuilder<'a>
+        where T: OptionSetter<SubscriptionBuilder<'a>>
+    {
+        option_setter.set_option(self)
+    }
 }
-
-

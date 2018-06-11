@@ -1,23 +1,20 @@
 #![crate_name = "stomp"]
 #![crate_type = "lib"]
 
-
 #[macro_use]
 extern crate log;
-extern crate mio;
-extern crate lifeguard;
+extern crate futures;
+extern crate tokio_io;
+extern crate tokio_core;
 extern crate unicode_segmentation;
-
-use session_builder::SessionBuilder;
-
-pub fn session<'a>(host: &'a str, port: u16) -> SessionBuilder<'a>{
-  SessionBuilder::new(host, port)
-}
+extern crate bytes;
+#[macro_use]
+extern crate nom;
 
 pub mod connection;
 pub mod header;
+pub mod codec;
 pub mod frame;
-pub mod frame_buffer;
 pub mod session;
 pub mod subscription;
 pub mod transaction;

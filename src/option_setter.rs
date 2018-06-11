@@ -2,109 +2,104 @@ use message_builder::MessageBuilder;
 use session_builder::SessionBuilder;
 use subscription_builder::SubscriptionBuilder;
 use header::{Header, SuppressedHeader, ContentType};
-use connection::{HeartBeat, Credentials};
+use connection::{HeartBeat, Credentials, OwnedCredentials};
 use subscription::AckMode;
-use session::{ToFrameHandler, ReceiptHandler};
+use session::{ReceiptRequest, GenerateReceipt};
 
 pub trait OptionSetter<T> {
-  fn set_option(self, T) -> T;
+    fn set_option(self, T) -> T;
 }
 
-impl <'a, 'b> OptionSetter<MessageBuilder<'a, 'b>> for Header {
-  fn set_option(self, mut builder: MessageBuilder<'a, 'b>) -> MessageBuilder<'a, 'b> {
-    builder.frame.headers.push(self);
-    builder
-  }
+impl <'a> OptionSetter<MessageBuilder<'a>> for Header {
+    fn set_option(self, mut builder: MessageBuilder<'a>) -> MessageBuilder<'a> {
+        builder.frame.headers.push(self);
+        builder
+    }
 }
 
-impl <'a, 'b> OptionSetter<MessageBuilder<'a, 'b>> for SuppressedHeader<'a> {
-  fn set_option(self, mut builder: MessageBuilder<'a, 'b>) -> MessageBuilder<'a, 'b> {
-    let SuppressedHeader(key) = self;
-    builder.frame.headers.retain(|header| (*header).get_key() != key);
-    builder
-  }
+impl <'a, 'b> OptionSetter<MessageBuilder<'b>> for SuppressedHeader<'a> {
+    fn set_option(self, mut builder: MessageBuilder<'b>) -> MessageBuilder<'b> {
+        let SuppressedHeader(key) = self;
+        builder.frame.headers.retain(|header| (*header).get_key() != key);
+        builder
+    }
 }
 
-impl <'a, 'b> OptionSetter<MessageBuilder<'a, 'b>> for ContentType<'a> {
-  fn set_option(self, mut builder: MessageBuilder<'a, 'b>) -> MessageBuilder<'a, 'b> {
-    let ContentType(content_type) = self;
-    builder.frame.headers.push(Header::new("content-type", content_type));
-    builder
-  }
+impl <'a, 'b> OptionSetter<MessageBuilder<'b>> for ContentType<'a> {
+    fn set_option(self, mut builder: MessageBuilder<'b>) -> MessageBuilder<'b> {
+        let ContentType(content_type) = self;
+        builder.frame.headers.push(Header::new("content-type", content_type));
+        builder
+    }
 }
 
-impl <'a> OptionSetter<SessionBuilder<'a>> for Header {
-  fn set_option(self, mut builder: SessionBuilder<'a>) -> SessionBuilder<'a> {
-    builder.headers.push(self);
-    builder
-  }
+impl OptionSetter<SessionBuilder> for Header {
+    fn set_option(self, mut builder: SessionBuilder) -> SessionBuilder {
+        builder.config.headers.push(self);
+        builder
+    }
 }
 
-impl <'a> OptionSetter<SessionBuilder<'a>> for HeartBeat {
-  fn set_option(self, mut builder: SessionBuilder<'a>) -> SessionBuilder<'a> {
-    builder.heartbeat = self;
-    builder
-  }
+impl OptionSetter<SessionBuilder> for HeartBeat {
+    fn set_option(self, mut builder: SessionBuilder) -> SessionBuilder {
+        builder.config.heartbeat = self;
+        builder
+    }
 }
 
-impl <'a> OptionSetter<SessionBuilder<'a>> for Credentials<'a> {
-  fn set_option(self, mut builder: SessionBuilder<'a>) -> SessionBuilder<'a> {
-    builder.credentials = Some(self);
-    builder
-  }
+impl<'b> OptionSetter<SessionBuilder> for Credentials<'b> {
+    fn set_option(self, mut builder: SessionBuilder) -> SessionBuilder {
+        builder.config.credentials = Some(OwnedCredentials::from(self));
+        builder
+    }
 }
 
-impl <'a> OptionSetter<SessionBuilder<'a>> for SuppressedHeader<'a> {
-  fn set_option(self, mut builder: SessionBuilder<'a>) -> SessionBuilder<'a> {
-    let SuppressedHeader(key) = self;
-    builder.headers.retain(|header| (*header).get_key() != key);
-    builder
-  }
+impl<'b> OptionSetter<SessionBuilder> for SuppressedHeader<'b> {
+    fn set_option(self, mut builder: SessionBuilder) -> SessionBuilder {
+        let SuppressedHeader(key) = self;
+        builder.config.headers.retain(|header| (*header).get_key() != key);
+        builder
+    }
 }
 
-impl <'a, 'session, 'sub> OptionSetter<SubscriptionBuilder<'a, 'session, 'sub>> for Header {
-  fn set_option(self, mut builder: SubscriptionBuilder<'a, 'session, 'sub>) -> SubscriptionBuilder<'a, 'session, 'sub> {
-    builder.headers.push(self);
-    builder
-  }
+impl <'a> OptionSetter<SubscriptionBuilder<'a>> for Header {
+    fn set_option(self, mut builder: SubscriptionBuilder<'a>) -> SubscriptionBuilder<'a> {
+        builder.headers.push(self);
+        builder
+    }
 }
 
-impl <'b, 'a, 'session, 'sub> OptionSetter<SubscriptionBuilder<'a, 'session, 'sub>> for SuppressedHeader<'b> {
-  fn set_option(self, mut builder: SubscriptionBuilder<'a, 'session, 'sub>) -> SubscriptionBuilder<'a, 'session, 'sub> {
-    let SuppressedHeader(key) = self;
-    builder.headers.retain(|header| (*header).get_key() != key);
-    builder
-  }
+impl <'a, 'b> OptionSetter<SubscriptionBuilder<'b>> for SuppressedHeader<'a> {
+    fn set_option(self, mut builder: SubscriptionBuilder<'b>) -> SubscriptionBuilder<'b> {
+        let SuppressedHeader(key) = self;
+        builder.headers.retain(|header| (*header).get_key() != key);
+        builder
+    }
 }
 
-impl <'a, 'session, 'sub> OptionSetter<SubscriptionBuilder<'a, 'session, 'sub>> for AckMode {
-  fn set_option(self, mut builder: SubscriptionBuilder<'a, 'session, 'sub>) -> SubscriptionBuilder<'a, 'session, 'sub> {
-    builder.ack_mode = self;
-    builder
-  }
+impl <'a> OptionSetter<SubscriptionBuilder<'a>> for AckMode  {
+    fn set_option(self, mut builder: SubscriptionBuilder<'a>) -> SubscriptionBuilder<'a> {
+        builder.ack_mode = self;
+        builder
+    }
 }
 
-impl <'a, 'session, T> OptionSetter<MessageBuilder<'a, 'session>> for ReceiptHandler<'session, T> where T : ToFrameHandler<'session> {
-  fn set_option(self, mut builder: MessageBuilder<'a, 'session>) -> MessageBuilder<'a, 'session> {
-    let next_id = builder.session.generate_receipt_id();
-    let receipt_id = format!("message/{}", next_id);
-    let handler_convertible = self.handler;
-    let handler = handler_convertible.to_frame_handler();
-    builder.frame.headers.push(Header::new("receipt", receipt_id.as_ref())); 
-    builder.session.receipt_handlers.insert(receipt_id.to_string(), handler);;
-    builder
-  }
+impl <'a> OptionSetter<MessageBuilder<'a>> for GenerateReceipt {
+    fn set_option(self, mut builder: MessageBuilder<'a>) -> MessageBuilder<'a> {
+        let next_id = builder.session.generate_receipt_id();
+        let receipt_id = format!("message/{}", next_id);
+        builder.receipt_request = Some(ReceiptRequest::new(receipt_id.clone()));
+        builder.frame.headers.push(Header::new("receipt", receipt_id.as_ref()));
+        builder
+    }
 }
 
-impl <'a, 'session, 'sub, T> OptionSetter<SubscriptionBuilder<'a, 'session, 'sub>> for ReceiptHandler<'session, T> where T : ToFrameHandler<'session> {
-  fn set_option(self, mut builder: SubscriptionBuilder<'a, 'session, 'sub>) -> SubscriptionBuilder<'a, 'session, 'sub> {
-    let next_id = builder.session.generate_receipt_id();
-    let receipt_id = format!("message/{}", next_id);
-    let handler_convertible = self.handler;
-    let handler = handler_convertible.to_frame_handler();
-    builder.headers.push(Header::new("receipt", receipt_id.as_ref())); 
-    builder.session.receipt_handlers.insert(receipt_id.to_string(), handler);;
-    builder
-  }
+impl <'a> OptionSetter<SubscriptionBuilder<'a>> for GenerateReceipt {
+    fn set_option(self, mut builder: SubscriptionBuilder<'a>) -> SubscriptionBuilder<'a> {
+        let next_id = builder.session.generate_receipt_id();
+        let receipt_id = format!("message/{}", next_id);
+        builder.receipt_request = Some(ReceiptRequest::new(receipt_id.clone()));
+        builder.headers.push(Header::new("receipt", receipt_id.as_ref()));
+        builder
+    }
 }
-

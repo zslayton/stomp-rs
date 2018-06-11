@@ -1,5 +1,3 @@
-NOTE: This currently depends on mio v0.3.x, which was broken by language changes. Work is underway to upgrade to mio v0.5.x in [this branch](https://github.com/zslayton/stomp-rs/tree/use-mai). This work is being tracked as [issue #94](https://github.com/zslayton/stomp-rs/issues/94).
-
 stomp-rs [![](https://api.travis-ci.org/zslayton/stomp-rs.png?branch=master)](https://travis-ci.org/zslayton/stomp-rs) [![](http://meritbadge.herokuapp.com/stomp)](https://crates.io/crates/stomp)
 =====
 

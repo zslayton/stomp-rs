@@ -1,44 +1,46 @@
 use frame::Frame;
 use frame::ToFrameBody;
 use message_builder::MessageBuilder;
-use std::io::Result;
 use header::Header;
-use session::Session;
+use session::{Session};
 
-pub struct Transaction<'a, 'session: 'a> {
-  pub id: String, 
-  pub session: &'a mut Session<'session>
+pub struct Transaction<'tx> {
+    pub id: String,
+    pub session: &'tx mut Session,
 }
 
-impl <'a, 'session> Transaction<'a, 'session> {
-  pub fn new<'b>(id: u32, session: &'b mut Session<'session>) -> Transaction<'b, 'session> {
-    Transaction {
-      id: format!("tx/{}",id),
-      session: session,
+impl<'tx> Transaction<'tx> {
+    pub fn new(session: &'tx mut Session)
+               -> Transaction<'tx> {
+        Transaction {
+            id: format!("tx/{}", session.generate_transaction_id()),
+            session: session,
+        }
     }
-  }
 
-  pub fn message<'b, T: ToFrameBody> (&'b mut self, destination: & str, body_convertible: T) -> MessageBuilder<'b, 'session> {
-    let mut send_frame = Frame::send(destination, body_convertible.to_frame_body());
-    send_frame.headers.push(Header::new("transaction", self.id.as_ref()));
-    MessageBuilder {
-     session: self.session,
-     frame: send_frame
+    pub fn message<'builder, T: ToFrameBody>(&'builder mut self,
+                                             destination: &str,
+                                             body_convertible: T)
+                                             -> MessageBuilder<'builder> {
+        let mut send_frame = Frame::send(destination, body_convertible.to_frame_body());
+        send_frame.headers.push(Header::new("transaction", self.id.as_ref()));
+        MessageBuilder::new(self.session, send_frame)
     }
-  }
 
-  pub fn begin<'b>(&'b mut self) -> Result<()> {
-    let begin_frame = Frame::begin(self.id.as_ref());
-    self.session.send(begin_frame)
-  }
+    // TODO: See if it's feasible to do this via command_sender
 
-  pub fn commit(self) -> Result<()> {
-    let commit_frame = Frame::commit(self.id.as_ref());
-    self.session.send(commit_frame)
-  }
+    pub fn begin(&mut self) {
+        let begin_frame = Frame::begin(self.id.as_ref());
+        self.session.send_frame(begin_frame)
+    }
 
-  pub fn abort(self) -> Result<()> {
-    let abort_frame = Frame::abort(self.id.as_ref());
-    self.session.send(abort_frame)
-  }
+    pub fn commit(self) {
+        let commit_frame = Frame::commit(self.id.as_ref());
+        self.session.send_frame(commit_frame)
+    }
+
+    pub fn abort(self) {
+        let abort_frame = Frame::abort(self.id.as_ref());
+        self.session.send_frame(abort_frame)
+    }
 }
