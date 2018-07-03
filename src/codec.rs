@@ -14,11 +14,11 @@ named!(parse_server_command(&[u8]) -> Command,
        )
 );
 named!(parse_header_character(&[u8]) -> char,
-       alt_complete!(
-           map!(tag!("\\n"), |_| '\n') |
-           map!(tag!("\\r"), |_| '\r') |
-           map!(tag!("\\c"), |_| ':') |
-           map!(tag!("\\\\"), |_| '\\') |
+       alt!(
+           complete!(map!(tag!("\\n"), |_| '\n')) |
+           complete!(map!(tag!("\\r"), |_| '\r')) |
+           complete!(map!(tag!("\\c"), |_| ':')) |
+           complete!(map!(tag!("\\\\"), |_| '\\')) |
            anychar
        )
 );
@@ -36,6 +36,35 @@ named!(parse_header(&[u8]) -> Header,
            }
        )
 );
+fn get_body<'a, 'b>(nb: &'a [u8], headers: &'b [Header]) -> ::nom::IResult<&'a [u8], &'a [u8]> {
+    let mut cl = None;
+    for hdr in headers {
+        if hdr.0 == "content-length" {
+            trace!("found content-length header");
+            match hdr.1.parse::<u32>() {
+                Ok(v) => cl = Some(v),
+                Err(e) => warn!("failed to parse content-length header: {}", e)
+            }
+        }
+    }
+    if let Some(cl) = cl {
+        trace!("using content-length header: {}", cl);
+        take!(nb, cl)
+    }
+    else {
+        trace!("using many0 method to parse body");
+        map!(nb,
+            many0!(is_not!("\0")),
+            |body| {
+                if body.len() == 0 {
+                    &[]
+                } else {
+                    body.into_iter().nth(0).unwrap()
+                }
+            }
+        )
+    }
+}
 named!(parse_frame(&[u8]) -> Frame,
        map!(
            do_parse!(
@@ -43,16 +72,11 @@ named!(parse_frame(&[u8]) -> Frame,
                line_ending >>
                headers: many0!(parse_header) >>
                line_ending >>
-               body: many0!(is_not!("\0")) >>
+               body: call!(get_body, &headers) >>
                tag!("\0") >>
                (cmd, headers, body)
            ),
            |(cmd, headers, body)| {
-               let body = if body.len() == 0 {
-                   &[]
-               } else {
-                   body.into_iter().nth(0).unwrap()
-               };
                Frame {
                    command: cmd,
                    headers: HeaderList { headers },
