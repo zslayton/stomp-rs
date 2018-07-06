@@ -36,24 +36,24 @@ named!(parse_header(&[u8]) -> Header,
            }
        )
 );
-fn get_body<'a, 'b>(nb: &'a [u8], headers: &'b [Header]) -> ::nom::IResult<&'a [u8], &'a [u8]> {
-    let mut cl = None;
-    for hdr in headers {
-        if hdr.0 == "content-length" {
+fn get_body<'a, 'b>(bytes: &'a [u8], headers: &'b [Header]) -> ::nom::IResult<&'a [u8], &'a [u8]> {
+    let mut content_length = None;
+    for header in headers {
+        if header.0 == "content-length" {
             trace!("found content-length header");
-            match hdr.1.parse::<u32>() {
-                Ok(v) => cl = Some(v),
-                Err(e) => warn!("failed to parse content-length header: {}", e)
+            match header.1.parse::<u32>() {
+                Ok(value) => content_length = Some(value),
+                Err(error) => warn!("failed to parse content-length header: {}", error)
             }
         }
     }
-    if let Some(cl) = cl {
-        trace!("using content-length header: {}", cl);
-        take!(nb, cl)
+    if let Some(content_length) = content_length {
+        trace!("using content-length header: {}", content_length);
+        take!(bytes, content_length)
     }
     else {
         trace!("using many0 method to parse body");
-        map!(nb,
+        map!(bytes,
             many0!(is_not!("\0")),
             |body| {
                 if body.len() == 0 {
