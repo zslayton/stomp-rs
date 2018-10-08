@@ -1,20 +1,22 @@
+use codec::Codec;
+use connection::{self, Connection};
+use frame::Transmission::{self, CompleteFrame, HeartBeat};
+use frame::{Command, Frame, ToFrameBody};
+use futures::*;
+use header::{self, Header};
+use message_builder::MessageBuilder;
+use session_builder::SessionConfig;
 use std::collections::hash_map::HashMap;
 use std::io::Result;
-use connection::{self, Connection};
+use std::time::{Duration, Instant};
 use subscription::{AckMode, AckOrNack, Subscription};
-use frame::{Frame, Command, ToFrameBody};
-use frame::Transmission::{self, HeartBeat, CompleteFrame};
-use header::{self, Header};
-use transaction::Transaction;
-use session_builder::SessionConfig;
-use message_builder::MessageBuilder;
 use subscription_builder::SubscriptionBuilder;
-use tokio_core::net::{TcpStreamNew, TcpStream};
-use tokio_core::reactor::{Timeout, Handle};
-use tokio_io::codec::Framed;
-use codec::Codec;
-use tokio_io::AsyncRead;
-use futures::*;
+use tokio::net::tcp::ConnectFuture;
+use tokio::net::TcpStream;
+use tokio_codec::Decoder;
+use tokio_codec::Framed;
+use tokio_timer::Delay;
+use transaction::Transaction;
 
 const GRACE_PERIOD_MULTIPLIER: f32 = 2.0;
 
@@ -48,8 +50,8 @@ pub struct SessionState {
     next_receipt_id: u32,
     pub rx_heartbeat_ms: Option<u32>,
     pub tx_heartbeat_ms: Option<u32>,
-    pub rx_heartbeat_timeout: Option<Timeout>,
-    pub tx_heartbeat_timeout: Option<Timeout>,
+    pub rx_heartbeat_timeout: Option<Delay>,
+    pub tx_heartbeat_timeout: Option<Delay>,
     pub subscriptions: HashMap<String, Subscription>,
     pub outstanding_receipts: HashMap<String, OutstandingReceipt>
 }
@@ -112,9 +114,13 @@ impl Session {
         info!("Reconnecting...");
 
         let address = (&self.config.host as &str, self.config.port)
-            .to_socket_addrs()?.nth(0)
-            .ok_or(io::Error::new(io::ErrorKind::Other, "address provided resolved to nothing"))?;
-        self.stream = StreamState::Connecting(TcpStream::connect(&address, &self.hdl));
+            .to_socket_addrs()?
+            .nth(0)
+            .ok_or(io::Error::new(
+                io::ErrorKind::Other,
+                "address provided resolved to nothing",
+            ))?;
+        self.stream = StreamState::Connecting(TcpStream::connect(&address));
         task::current().notify();
         Ok(())
     }
@@ -132,9 +138,9 @@ impl Session {
 }
 // *** pub(crate) API ***
 impl Session {
-    pub(crate) fn new(config: SessionConfig, stream: TcpStreamNew, hdl: Handle) -> Self {
+    pub(crate) fn new(config: SessionConfig, stream: ConnectFuture) -> Self {
         Self {
-            config, hdl,
+            config,
             state: SessionState::new(),
             events: vec![],
             stream: StreamState::Connecting(stream)
@@ -176,7 +182,6 @@ impl Session {
         }
     }
     fn register_tx_heartbeat_timeout(&mut self) -> Result<()> {
-        use std::time::Duration;
         if self.state.tx_heartbeat_ms.is_none() {
             warn!("Trying to register TX heartbeat timeout, but not set!");
             return Ok(());
@@ -187,14 +192,12 @@ impl Session {
                    tx_heartbeat_ms);
             return Ok(());
         }
-        let timeout = Timeout::new(Duration::from_millis(tx_heartbeat_ms as _), &self.hdl)?;
+        let timeout = Delay::new(Instant::now() + Duration::from_millis(tx_heartbeat_ms as _));
         self.state.tx_heartbeat_timeout = Some(timeout);
         Ok(())
     }
 
     fn register_rx_heartbeat_timeout(&mut self) -> Result<()> {
-        use std::time::Duration;
-
         let rx_heartbeat_ms = self.state.rx_heartbeat_ms
             .unwrap_or_else(|| {
                 debug!("Trying to register RX heartbeat timeout but no \
@@ -207,7 +210,8 @@ impl Session {
                    rx_heartbeat_ms);
             return Ok(());
         }
-        let timeout = Timeout::new(Duration::from_millis(rx_heartbeat_ms as _), &self.hdl)?;
+
+        let timeout = Delay::new(Instant::now() + Duration::from_millis(rx_heartbeat_ms as _));
         self.state.rx_heartbeat_timeout = Some(timeout);
         Ok(())
     }
@@ -370,7 +374,7 @@ impl Session {
                 Connecting(mut tsn) => {
                     match tsn.poll() {
                         Ok(Async::Ready(s)) => {
-                            let fr = s.framed(Codec);
+                            let fr = Codec.framed(s);
                             self.stream = Connected(fr);
                             self.on_stream_ready();
                         },
@@ -419,15 +423,14 @@ pub enum SessionEvent {
 }
 pub(crate) enum StreamState {
     Connected(Framed<TcpStream, Codec>),
-    Connecting(TcpStreamNew),
-    Failed
+    Connecting(ConnectFuture),
+    Failed,
 }
 pub struct Session {
     config: SessionConfig,
     pub(crate) state: SessionState,
     stream: StreamState,
-    hdl: Handle,
-    events: Vec<SessionEvent>
+    events: Vec<SessionEvent>,
 }
 impl Stream for Session {
     type Item = SessionEvent;
@@ -435,6 +438,8 @@ impl Stream for Session {
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
         use frame::Transmission::*;
+        use std::io::Error as IoError;
+        use std::io::ErrorKind;
 
         while let Async::Ready(Some(val)) = self.poll_stream() {
             match val {
@@ -456,10 +461,13 @@ impl Stream for Session {
             }
         }
 
-        let rxh = self.state.rx_heartbeat_timeout
+        let rxh = self
+            .state
+            .rx_heartbeat_timeout
             .as_mut()
             .map(|t| t.poll())
-            .unwrap_or(Ok(Async::NotReady))?;
+            .unwrap_or(Ok(Async::NotReady))
+            .map_err(|_e| IoError::new(ErrorKind::Other, "timer"))?;
 
         if let Async::Ready(_) = rxh {
             self.on_disconnect(DisconnectionReason::HeartbeatTimeout);
@@ -468,7 +476,8 @@ impl Stream for Session {
         let txh = self.state.tx_heartbeat_timeout
             .as_mut()
             .map(|t| t.poll())
-            .unwrap_or(Ok(Async::NotReady))?;
+            .unwrap_or(Ok(Async::NotReady))
+            .map_err(|_e| IoError::new(ErrorKind::Other, "timer"))?;
 
         if let Async::Ready(_) = txh {
             self.reply_to_heartbeat()?;
