@@ -467,17 +467,19 @@ impl Stream for Session {
             .as_mut()
             .map(|t| t.poll())
             .unwrap_or(Ok(Async::NotReady))
-            .map_err(|_e| IoError::new(ErrorKind::Other, "timer"))?;
+            .map_err(|e| IoError::new(ErrorKind::Other, format!("timer: {}", e)))?;
 
         if let Async::Ready(_) = rxh {
             self.on_disconnect(DisconnectionReason::HeartbeatTimeout);
         }
 
-        let txh = self.state.tx_heartbeat_timeout
+        let txh = self
+            .state
+            .tx_heartbeat_timeout
             .as_mut()
             .map(|t| t.poll())
             .unwrap_or(Ok(Async::NotReady))
-            .map_err(|_e| IoError::new(ErrorKind::Other, "timer"))?;
+            .map_err(|e| IoError::new(ErrorKind::Other, format!("timer: {}", e)))?;
 
         if let Async::Ready(_) = txh {
             self.reply_to_heartbeat()?;

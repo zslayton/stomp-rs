@@ -17,7 +17,6 @@ struct ExampleSession {
     session: Session,
     destination: String,
     session_number: u32,
-
     subscription_id: Option<String>,
 }
 
