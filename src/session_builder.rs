@@ -5,8 +5,7 @@ use header::{HeaderList, Header};
 use std::net::ToSocketAddrs;
 use session::{Session};
 use std::io;
-use tokio_core::reactor::Handle;
-use tokio_core::net::TcpStream;
+use tokio::net::TcpStream;
 
 #[derive(Clone)]
 pub struct SessionConfig {
@@ -42,11 +41,11 @@ impl SessionBuilder {
     }
 
     #[allow(dead_code)]
-    pub fn start<'b, 'c>(self, hdl: Handle) -> ::std::io::Result<Session> {
+    pub fn start<'b, 'c>(self) -> ::std::io::Result<Session> {
         let address = (&self.config.host as &str, self.config.port)
             .to_socket_addrs()?.nth(0)
             .ok_or(io::Error::new(io::ErrorKind::Other, "address provided resolved to nothing"))?;
-        Ok(Session::new(self.config, TcpStream::connect(&address, &hdl), hdl))
+        Ok(Session::new(self.config, TcpStream::connect(&address)))
     }
 
     #[allow(dead_code)]

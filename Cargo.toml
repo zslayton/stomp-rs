@@ -13,9 +13,14 @@ bytes = "0.4"
 futures = "0.1"
 log = "0.3"
 nom = "3.2"
-tokio-core = "0.1"
+tokio = "0.1"
+tokio-codec = "0.1"
+tokio-timer = "0.2"
 tokio-io = "0.1"
 unicode-segmentation = "0.1"
+
+[dev-dependencies]
+env_logger = "*"
 
 [lib]
 name = "stomp"
