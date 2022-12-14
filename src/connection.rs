@@ -25,11 +25,12 @@ impl OwnedCredentials {
 }
 
 impl Connection {
-    pub fn select_heartbeat(client_tx_ms: u32,
-                            client_rx_ms: u32,
-                            server_tx_ms: u32,
-                            server_rx_ms: u32)
-                            -> (u32, u32) {
+    pub fn select_heartbeat(
+        client_tx_ms: u32,
+        client_rx_ms: u32,
+        server_tx_ms: u32,
+        server_rx_ms: u32,
+    ) -> (u32, u32) {
         let heartbeat_tx_ms: u32;
         let heartbeat_rx_ms: u32;
         if client_tx_ms == 0 || server_rx_ms == 0 {

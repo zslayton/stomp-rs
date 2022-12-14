@@ -17,7 +17,9 @@ impl HeaderList {
         HeaderList::with_capacity(0)
     }
     pub fn with_capacity(capacity: usize) -> HeaderList {
-        HeaderList { headers: Vec::with_capacity(capacity) }
+        HeaderList {
+            headers: Vec::with_capacity(capacity),
+        }
     }
 
     pub fn push(&mut self, header: Header) {
@@ -33,7 +35,8 @@ impl HeaderList {
     }
 
     pub fn drain<F>(&mut self, mut sink: F)
-        where F: FnMut(Header)
+    where
+        F: FnMut(Header),
     {
         while let Some(header) = self.headers.pop() {
             sink(header);
@@ -48,7 +51,8 @@ impl HeaderList {
     }
 
     pub fn retain<F>(&mut self, test: F)
-        where F: Fn(&Header) -> bool
+    where
+        F: Fn(&Header) -> bool,
     {
         self.headers.retain(test)
     }
@@ -73,10 +77,10 @@ impl Header {
     }
 
     pub fn encode_value(value: &str) -> String {
-        let mut encoded = String::new();//self.strings.detached();
+        let mut encoded = String::new(); //self.strings.detached();
         for grapheme in UnicodeSegmentation::graphemes(value, true) {
             match grapheme {
-                "\\" => encoded.push_str(r"\\"),// Order is significant
+                "\\" => encoded.push_str(r"\\"), // Order is significant
                 "\r" => encoded.push_str(r"\r"),
                 "\n" => encoded.push_str(r"\n"),
                 ":" => encoded.push_str(r"\c"),
@@ -128,11 +132,9 @@ pub enum StompVersion {
 
 impl HeaderList {
     pub fn get_header<'a>(&'a self, key: &str) -> Option<&'a Header> {
-        self.headers.iter().find(|header| {
-            match **header {
-                ref h if h.get_key() == key => true,
-                _ => false,
-            }
+        self.headers.iter().find(|header| match **header {
+            ref h if h.get_key() == key => true,
+            _ => false,
         })
     }
 
@@ -141,16 +143,15 @@ impl HeaderList {
             Some(h) => h.get_value(),
             None => return None,
         };
-        let versions: Vec<StompVersion> = versions.split(',')
-                                                  .filter_map(|v| {
-                                                      match v.trim() {
-                                                          "1.0" => Some(StompVersion::Stomp_v1_0),
-                                                          "1.1" => Some(StompVersion::Stomp_v1_1),
-                                                          "1.2" => Some(StompVersion::Stomp_v1_2),
-                                                          _ => None,
-                                                      }
-                                                  })
-                                                  .collect();
+        let versions: Vec<StompVersion> = versions
+            .split(',')
+            .filter_map(|v| match v.trim() {
+                "1.0" => Some(StompVersion::Stomp_v1_0),
+                "1.1" => Some(StompVersion::Stomp_v1_1),
+                "1.2" => Some(StompVersion::Stomp_v1_2),
+                _ => None,
+            })
+            .collect();
         Some(versions)
     }
 
@@ -173,9 +174,10 @@ impl HeaderList {
             Some(h) => h.get_value(),
             None => return None,
         };
-        let spec_list: Vec<u32> = spec.split(',')
-                                      .filter_map(|str_val| str_val.parse::<u32>().ok())
-                                      .collect();
+        let spec_list: Vec<u32> = spec
+            .split(',')
+            .filter_map(|str_val| str_val.parse::<u32>().ok())
+            .collect();
 
         if spec_list.len() != 2 {
             return None;
