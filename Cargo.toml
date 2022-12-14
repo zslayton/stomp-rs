@@ -7,7 +7,8 @@ name = "stomp"
 readme = "README.md"
 repository = "https://github.com/zslayton/stomp-rs"
 version = "0.12.0"
-
+rust-version = "1.62"
+edition = "2021"
 [dependencies]
 bytes = "0.4"
 futures = "0.1"

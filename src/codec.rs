@@ -1,9 +1,8 @@
-use header::{Header, HeaderList};
-use frame::{Frame, Transmission};
+use crate::frame::{Command, Frame, Transmission};
+use crate::header::{Header, HeaderList};
 use bytes::BytesMut;
-use frame::Command;
-use tokio_io::codec::{Encoder, Decoder};
-use nom::{line_ending, anychar};
+use nom::{anychar, line_ending};
+use tokio_io::codec::{Decoder, Encoder};
 
 named!(parse_server_command(&[u8]) -> Command,
        alt!(
@@ -43,26 +42,22 @@ fn get_body<'a, 'b>(bytes: &'a [u8], headers: &'b [Header]) -> ::nom::IResult<&'
             trace!("found content-length header");
             match header.1.parse::<u32>() {
                 Ok(value) => content_length = Some(value),
-                Err(error) => warn!("failed to parse content-length header: {}", error)
+                Err(error) => warn!("failed to parse content-length header: {}", error),
             }
         }
     }
     if let Some(content_length) = content_length {
         trace!("using content-length header: {}", content_length);
         take!(bytes, content_length)
-    }
-    else {
+    } else {
         trace!("using many0 method to parse body");
-        map!(bytes,
-            many0!(is_not!("\0")),
-            |body| {
-                if body.len() == 0 {
-                    &[]
-                } else {
-                    body.into_iter().nth(0).unwrap()
-                }
+        map!(bytes, many0!(is_not!("\0")), |body| {
+            if body.len() == 0 {
+                &[]
+            } else {
+                body.into_iter().nth(0).unwrap()
             }
-        )
+        })
     }
 }
 named!(parse_frame(&[u8]) -> Frame,
@@ -96,7 +91,11 @@ pub struct Codec;
 impl Encoder for Codec {
     type Item = Transmission;
     type Error = ::std::io::Error;
-    fn encode(&mut self, item: Transmission, buffer: &mut BytesMut) -> Result<(), ::std::io::Error> {
+    fn encode(
+        &mut self,
+        item: Transmission,
+        buffer: &mut BytesMut,
+    ) -> Result<(), ::std::io::Error> {
         item.write(buffer);
         Ok(())
     }
@@ -111,14 +110,12 @@ impl Decoder for Codec {
 
         trace!("decoding data: {:?}", src);
         let (point, data) = match parse_transmission(src) {
-            IResult::Done(rest, data) => {
-                (rest.len(), data)
-            },
+            IResult::Done(rest, data) => (rest.len(), data),
             IResult::Error(e) => {
                 warn!("parse error: {:?}", e);
                 return Err(Error::new(ErrorKind::Other, format!("parse error: {}", e)));
-            },
-            IResult::Incomplete(_) => return Ok(None)
+            }
+            IResult::Incomplete(_) => return Ok(None),
         };
         let len = src.len().saturating_sub(point);
         src.split_to(len);

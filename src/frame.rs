@@ -1,10 +1,7 @@
-use header::HeaderList;
-use header::Header;
-use subscription::AckMode;
-use std::str::from_utf8;
-use std::fmt;
-use std::fmt::Formatter;
+use crate::{header::{Header, HeaderList}, header_list, subscription::AckMode};
 use bytes::BytesMut;
+use std::fmt::{self, Formatter};
+use std::str::from_utf8;
 
 #[derive(Copy, Clone, Debug)]
 pub enum Command {
@@ -22,7 +19,7 @@ pub enum Command {
     Connected,
     Message,
     Receipt,
-    Error
+    Error,
 }
 impl Command {
     pub fn as_str(&self) -> &'static str {
@@ -108,7 +105,8 @@ impl Frame {
         let mut space_required: usize = 0;
         // Add one to space calculations to make room for '\n'
         space_required += self.command.as_str().len() + 1;
-        space_required += self.headers
+        space_required += self
+            .headers
             .iter()
             .fold(0, |length, header| length + header.get_raw().len() + 1);
         space_required += 1; // Newline at end of headers
@@ -175,7 +173,6 @@ impl Frame {
         };
         disconnect_frame
     }
-
 
     pub fn subscribe(subscription_id: &str, destination: &str, ack_mode: AckMode) -> Frame {
         let subscribe_frame = Frame {

@@ -1,8 +1,8 @@
-use frame::Frame;
-use frame::ToFrameBody;
-use message_builder::MessageBuilder;
-use header::Header;
-use session::{Session};
+use crate::frame::Frame;
+use crate::frame::ToFrameBody;
+use crate::header::Header;
+use crate::message_builder::MessageBuilder;
+use crate::session::Session;
 
 pub struct Transaction<'tx> {
     pub id: String,
@@ -10,20 +10,22 @@ pub struct Transaction<'tx> {
 }
 
 impl<'tx> Transaction<'tx> {
-    pub fn new(session: &'tx mut Session)
-               -> Transaction<'tx> {
+    pub fn new(session: &'tx mut Session) -> Transaction<'tx> {
         Transaction {
             id: format!("tx/{}", session.generate_transaction_id()),
             session: session,
         }
     }
 
-    pub fn message<'builder, T: ToFrameBody>(&'builder mut self,
-                                             destination: &str,
-                                             body_convertible: T)
-                                             -> MessageBuilder<'builder> {
+    pub fn message<'builder, T: ToFrameBody>(
+        &'builder mut self,
+        destination: &str,
+        body_convertible: T,
+    ) -> MessageBuilder<'builder> {
         let mut send_frame = Frame::send(destination, body_convertible.to_frame_body());
-        send_frame.headers.push(Header::new("transaction", self.id.as_ref()));
+        send_frame
+            .headers
+            .push(Header::new("transaction", self.id.as_ref()));
         MessageBuilder::new(self.session, send_frame)
     }
 
